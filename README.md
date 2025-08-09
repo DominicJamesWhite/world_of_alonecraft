@@ -1,1 +1,1 @@
-# world_of_alonecraft
+This is a module for Azerothcore to allow for a better solo gameplay experience without bots. 
