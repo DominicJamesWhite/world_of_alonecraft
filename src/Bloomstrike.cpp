@@ -16,8 +16,9 @@ class spell_bloomstrike : public SpellScript
             return;
 
         uint32 bonusCount = 0;
+        int32 initialDamage = GetHitDamage(); // Store initial damage
 
-        // Iterate over applied auras on the caster
+        // Iterate over applied auras on the target
         for (auto const& auraPair : caster->GetAppliedAuras())
         {
             AuraApplication* auraApp = auraPair.second;
@@ -32,26 +33,47 @@ class spell_bloomstrike : public SpellScript
             if (!info)
                 continue;
 
-            // Only count auras cast by the caster on themselves
+            // Only count auras cast by the Bloomstrike caster on the target
             if (aura->GetCasterGUID() != caster->GetGUID())
                 continue;
 
-            // Lifebloom:   FamilyFlags[0] bit 0x0000000000000400
-            // Regrowth:    FamilyFlags[0] bit 0x0000000000000010
-            // Rejuvenation:FamilyFlags[0] bit 0x0000000000000004
-            // Wild Growth: FamilyFlags[1] bit 0x0000000000000020
-            if ((info->SpellFamilyFlags[0] & 0x0000000000000400ULL) || // Lifebloom
-                (info->SpellFamilyFlags[0] & 0x0000000000000010ULL) || // Regrowth
-                (info->SpellFamilyFlags[0] & 0x0000000000000004ULL) || // Rejuvenation
-                (info->SpellFamilyFlags[1] & 0x0000000000000020ULL))   // Wild Growth
+            // Check if the aura is a periodic heal effect
+            bool isPeriodicHeal = false;
+            for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
             {
-                bonusCount++;
+                if (info->Effects[i].ApplyAuraName == SPELL_AURA_PERIODIC_HEAL)
+                {
+                    isPeriodicHeal = true;
+                    break;
+                }
+            }
+
+            // Check for specific HoT spells by their SpellFamilyFlags individually
+            if (isPeriodicHeal)
+            {
+                if (info->SpellFamilyFlags[1] & 0x00000010) // Lifebloom
+                {
+                    bonusCount++;
+                }
+                if (info->SpellFamilyFlags[0] & 0x00000010) // Rejuvenation
+                {
+                    bonusCount++;
+                }
+                if (info->SpellFamilyFlags[0] & 0x00000040) // Regrowth
+                {
+                    bonusCount++;
+                }
+                if (info->SpellFamilyFlags[1] & 0x04000000) // Wild Growth
+                {
+                    bonusCount++;
+                }
             }
         }
 
         // Apply damage multiplier (+25% per HoT)
         float multiplier = 1.0f + (0.25f * bonusCount);
-        SetHitDamage(int32(GetHitDamage() * multiplier));
+        int32 finalDamage = int32(initialDamage * multiplier);
+        SetHitDamage(finalDamage);
     }
 
     void Register() override
