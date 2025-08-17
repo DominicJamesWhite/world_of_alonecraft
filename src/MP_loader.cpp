@@ -6,6 +6,7 @@
 void AddMyPlayerScripts();
 void AddSC_spell_bloomstrike();
 void AddSC_aura_proc_self_hot_only();
+void AddSC_aura_proc_moonfire_only();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -15,4 +16,5 @@ void Addworld_of_alonecraftScripts()
     AddMyPlayerScripts();
     AddSC_spell_bloomstrike();
     AddSC_aura_proc_self_hot_only();
+    AddSC_aura_proc_moonfire_only();
 }
