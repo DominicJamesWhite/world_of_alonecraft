@@ -8,6 +8,7 @@ void AddSC_spell_bloomstrike();
 void AddSC_aura_proc_self_hot_only();
 void AddSC_aura_proc_moonfire_only();
 void AddSC_spell_swiftmend_trigger();
+void AddSC_spell_tree_of_life_ap();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -19,4 +20,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_aura_proc_self_hot_only();
     AddSC_aura_proc_moonfire_only();
     AddSC_spell_swiftmend_trigger();
+    AddSC_spell_tree_of_life_ap();
 }
