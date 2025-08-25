@@ -11,6 +11,7 @@ void AddSC_spell_swiftmend_trigger();
 void AddSC_spell_tree_of_life_ap();
 void AddSC_PushbackImmunity();
 void AddSC_mod_lifebloom();
+void AddSC_spell_natures_focus_wrath();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -25,4 +26,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_spell_tree_of_life_ap();
     AddSC_PushbackImmunity();
     AddSC_mod_lifebloom();
+    AddSC_spell_natures_focus_wrath();
 }
