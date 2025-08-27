@@ -14,6 +14,7 @@ void AddSC_mod_lifebloom();
 void AddSC_spell_natures_focus_wrath();
 void AddSC_spell_no_swing_reset_arakkoa();
 void AddSC_spell_mage_mage_armor_custom();
+void AddSC_molten_armor_mechanic();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -31,4 +32,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_spell_natures_focus_wrath();
     AddSC_spell_no_swing_reset_arakkoa();
     AddSC_spell_mage_mage_armor_custom();
+    AddSC_molten_armor_mechanic();
 }
