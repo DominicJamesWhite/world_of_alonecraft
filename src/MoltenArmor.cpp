@@ -28,8 +28,6 @@ public:
         // Check if player has Molten Armor active
         if (!player->HasAura(MOLTEN_ARMOR_SPELL_ID))
             return;
-        
-        LOG_INFO("module.moltenarmor", "Molten Armor OnDamage hook triggered for player {}. Damage: {}", player->GetName().c_str(), damage);
 
         // Split damage: 50% instant, 50% to DoT
         uint32 instantDamage = damage / 2;
@@ -45,7 +43,6 @@ public:
 private:
     void AddOrUpdateEmberScars(Player* player, uint32 damageToAdd)
     {
-        LOG_INFO("module.moltenarmor", "Adding {} damage to Ember Scars for player {}", damageToAdd, player->GetName());
         Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
         uint32 totalStoredDamage = 0;
         uint8 currentStacks = 0;
@@ -107,8 +104,6 @@ public:
         if (!IsFireSpell(spell->GetSpellInfo()) || !player->HasAura(MOLTEN_ARMOR_SPELL_ID))
             return;
 
-        LOG_INFO("module.moltenarmor", "Molten Armor OnPlayerSpellCast hook triggered for player {}. Spell: {}", player->GetName().c_str(), spell->GetSpellInfo()->SpellName[0]);
-
         // Check if it was a critical hit (simplified - you may need to adjust this)
         if (!roll_chance_f(player->GetFloatValue(PLAYER_CRIT_PERCENTAGE)))
             return;
@@ -127,7 +122,7 @@ public:
 private:
     void RemoveEmberScarsStack(Player* player)
     {
-        LOG_INFO("module.moltenarmor", "Removing Ember Scars stack for player {}", player->GetName().c_str());
+
         Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
         if (!emberScars || emberScars->GetStackAmount() == 0)
             return;
