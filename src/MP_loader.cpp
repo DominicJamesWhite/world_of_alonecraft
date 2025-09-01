@@ -17,6 +17,8 @@ void AddSC_spell_mage_mage_armor_custom();
 void AddSC_molten_armor_mechanic();
 void AddSC_spell_mage_aegis_of_antonidas();
 void AddSC_frost_ice_armor_enhanced();
+void AddSC_arcane_fortitude_mana_shield();
+void AddSC_arcane_stability_mechanic();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -37,4 +39,6 @@ void Addworld_of_alonecraftScripts()
     AddSC_molten_armor_mechanic();
     AddSC_spell_mage_aegis_of_antonidas();
     AddSC_frost_ice_armor_enhanced();
+    AddSC_arcane_fortitude_mana_shield();
+    AddSC_arcane_stability_mechanic();
 }
