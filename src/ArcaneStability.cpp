@@ -17,18 +17,19 @@
 // Spell family flags for Arcane Missiles: [0] 0x00000800 [1] 0x00000000 [2] 0x00000000
 // Spell family flags for Invocation: [0] 0x00002000 [1] 0x00000000 [2] 0x00000008
 
-class spell_arcane_stability_proc : public PlayerScript
+class spell_arcane_stability_proc : public UnitScript
 {
 public:
-    spell_arcane_stability_proc() : PlayerScript("spell_arcane_stability_proc") { }
+    spell_arcane_stability_proc() : UnitScript("spell_arcane_stability_proc") { }
 
-    void OnPlayerSpellCast(Player* player, Spell* spell, bool skipCheck) override
+    void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
     {
-        if (!spell || !spell->GetSpellInfo())
+        Player* player = attacker->ToPlayer();
+        if (!player)
             return;
 
-        // Check if this is Arcane Missiles
-        if (!IsArcaneMissiles(spell->GetSpellInfo()))
+        // Check if damage is from Arcane Missiles
+        if (!IsArcaneMissilesDamage(player))
             return;
 
         // Get Arcane Stability talent rank
@@ -58,6 +59,31 @@ private:
                 spellInfo->SpellFamilyFlags[0] & 0x00000800 &&
                 spellInfo->SpellFamilyFlags[1] == 0x00000000 &&
                 spellInfo->SpellFamilyFlags[2] == 0x00000000);
+    }
+
+    bool IsArcaneMissilesDamage(Player* player)
+    {
+        // Check if player is currently casting or has recently cast Arcane Missiles
+        // We'll check for the channeling spell or recent spell cast
+        if (Spell* currentSpell = player->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+        {
+            if (IsArcaneMissiles(currentSpell->GetSpellInfo()))
+                return true;
+        }
+
+        // Alternative: Check if player has Arcane Missiles aura/effect active
+        // This covers cases where the damage might come from a DoT component
+        Unit::AuraApplicationMap const& auras = player->GetAppliedAuras();
+        for (Unit::AuraApplicationMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
+        {
+            if (Aura* aura = itr->second->GetBase())
+            {
+                if (IsArcaneMissiles(aura->GetSpellInfo()))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     bool IsInvocation(SpellInfo const* spellInfo)
