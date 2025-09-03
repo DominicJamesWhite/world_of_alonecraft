@@ -8,114 +8,71 @@
 #include "Log.h"
 
 // Arcane Stability talent IDs
-#define ARCANE_STABILITY_RANK_1 11237
-#define ARCANE_STABILITY_RANK_2 12463
-#define ARCANE_STABILITY_RANK_3 12464
-#define ARCANE_STABILITY_RANK_4 16769
-#define ARCANE_STABILITY_RANK_5 16770
-
-// Spell family flags for Arcane Missiles: [0] 0x00000800 [1] 0x00000000 [2] 0x00000000
-// Spell family flags for Invocation: [0] 0x00002000 [1] 0x00000000 [2] 0x00000008
-
-class spell_arcane_stability_proc : public UnitScript
+enum ArcaneStabilityRanks
 {
-public:
-    spell_arcane_stability_proc() : UnitScript("spell_arcane_stability_proc") { }
+    ARCANE_STABILITY_RANK_1 = 11237,
+    ARCANE_STABILITY_RANK_2 = 12463,
+    ARCANE_STABILITY_RANK_3 = 12464,
+    ARCANE_STABILITY_RANK_4 = 16769,
+    ARCANE_STABILITY_RANK_5 = 16770
+};
 
-    void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
+// Arcane Missiles Spell IDs (Ranks 1-13)
+const uint32 ARCANE_MISSILES_SPELLS[] = {
+    5143, 5144, 5145, 8416, 8417, 10263, 10264, 10265, 25344, 25345, 42844, 42845, 42846
+};
+
+class spell_mage_arcane_stability_proc : public SpellScript
+{
+    PrepareSpellScript(spell_mage_arcane_stability_proc);
+
+    void HandleOnHit()
     {
-        Player* player = attacker->ToPlayer();
-        if (!player)
+        Unit* caster = GetCaster();
+        if (!caster || caster->GetTypeId() != TYPEID_PLAYER)
             return;
 
-        // Check if damage is from Arcane Missiles
-        if (!IsArcaneMissilesDamage(player))
-            return;
+        Player* player = caster->ToPlayer();
+        uint8 talentRank = 0;
 
-        // Get Arcane Stability talent rank
-        uint8 talentRank = GetArcaneStabilityRank(player);
+        // Check for talent rank, from highest to lowest
+        if (player->HasAura(ARCANE_STABILITY_RANK_5)) talentRank = 5;
+        else if (player->HasAura(ARCANE_STABILITY_RANK_4)) talentRank = 4;
+        else if (player->HasAura(ARCANE_STABILITY_RANK_3)) talentRank = 3;
+        else if (player->HasAura(ARCANE_STABILITY_RANK_2)) talentRank = 2;
+        else if (player->HasAura(ARCANE_STABILITY_RANK_1)) talentRank = 1;
+
         if (talentRank == 0)
             return;
 
-        // Calculate proc chance based on rank (4/8/12/16/20%)
-        uint32 procChance = talentRank * 4;
-
         // Roll for proc
+        uint32 procChance = talentRank * 4;
         if (!roll_chance_i(procChance))
             return;
 
-        // Reset cooldown on Invocation spells
+        // Proc successful, reset cooldowns
         ResetInvocationCooldowns(player);
     }
 
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_mage_arcane_stability_proc::HandleOnHit);
+    }
+
 private:
-    bool IsArcaneMissiles(SpellInfo const* spellInfo)
-    {
-        if (!spellInfo)
-            return false;
-
-        // Check spell family and flags for Arcane Missiles
-        return (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE &&
-                spellInfo->SpellFamilyFlags[0] & 0x00000800 &&
-                spellInfo->SpellFamilyFlags[1] == 0x00000000 &&
-                spellInfo->SpellFamilyFlags[2] == 0x00000000);
-    }
-
-    bool IsArcaneMissilesDamage(Player* player)
-    {
-        // Check if player is currently casting or has recently cast Arcane Missiles
-        // We'll check for the channeling spell or recent spell cast
-        if (Spell* currentSpell = player->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
-        {
-            if (IsArcaneMissiles(currentSpell->GetSpellInfo()))
-                return true;
-        }
-
-        // Alternative: Check if player has Arcane Missiles aura/effect active
-        // This covers cases where the damage might come from a DoT component
-        Unit::AuraApplicationMap const& auras = player->GetAppliedAuras();
-        for (Unit::AuraApplicationMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
-        {
-            if (Aura* aura = itr->second->GetBase())
-            {
-                if (IsArcaneMissiles(aura->GetSpellInfo()))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
     bool IsInvocation(SpellInfo const* spellInfo)
     {
         if (!spellInfo)
             return false;
-
-        // Check spell family and flags for Invocation
+        // Spell family flags for Invocation: [0] 0x00002000 [1] 0x00000000 [2] 0x00000008
         return (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE &&
                 spellInfo->SpellFamilyFlags[0] & 0x00002000 &&
                 spellInfo->SpellFamilyFlags[1] == 0x00000000 &&
-                spellInfo->SpellFamilyFlags[2] & 0x00000008);
-    }
-
-    uint8 GetArcaneStabilityRank(Player* player)
-    {
-        if (player->HasAura(ARCANE_STABILITY_RANK_5))
-            return 5;
-        if (player->HasAura(ARCANE_STABILITY_RANK_4))
-            return 4;
-        if (player->HasAura(ARCANE_STABILITY_RANK_3))
-            return 3;
-        if (player->HasAura(ARCANE_STABILITY_RANK_2))
-            return 2;
-        if (player->HasAura(ARCANE_STABILITY_RANK_1))
-            return 1;
-        return 0;
+                spellInfo->SpellFamilyFlags[2] == 0x00000008);
     }
 
     void ResetInvocationCooldowns(Player* player)
     {
-        // Get all known spells and check for Invocation spells
         PlayerSpellMap const& spellMap = player->GetSpellMap();
         for (PlayerSpellMap::const_iterator itr = spellMap.begin(); itr != spellMap.end(); ++itr)
         {
@@ -123,20 +80,12 @@ private:
             if (!spellInfo)
                 continue;
 
-            // Check if this is an Invocation spell
             if (IsInvocation(spellInfo))
             {
-                // Check if spell is on cooldown
-                SpellCooldowns::iterator citr = player->GetSpellCooldownMap().find(spellInfo->Id);
-                if (citr != player->GetSpellCooldownMap().end())
+                if (player->HasSpellCooldown(spellInfo->Id))
                 {
-                    // Remove the cooldown
-                    if (citr->second.needSendToClient)
-                        player->RemoveSpellCooldown(spellInfo->Id, true);
-                    else
-                        player->RemoveSpellCooldown(spellInfo->Id, false);
-
-                    LOG_INFO("scripts", "Arcane Stability proc: Reset cooldown for spell {} ({})", 
+                    player->RemoveSpellCooldown(spellInfo->Id, true);
+                    LOG_INFO("scripts", "Arcane Stability: Cooldown reset for Invocation spell %u (%s)",
                              spellInfo->Id, spellInfo->SpellName[0]);
                 }
             }
@@ -144,8 +93,10 @@ private:
     }
 };
 
-// Registration
 void AddSC_arcane_stability_mechanic()
 {
-    new spell_arcane_stability_proc();
+    for (uint32 spellId : ARCANE_MISSILES_SPELLS)
+    {
+        RegisterSpellScript(spell_mage_arcane_stability_proc, spellId);
+    }
 }

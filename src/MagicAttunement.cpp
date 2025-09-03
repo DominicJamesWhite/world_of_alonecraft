@@ -6,9 +6,22 @@
 #include "Unit.h"
 #include "Log.h"
 
-#define MAGIC_ATTUNEMENT_RANK_1 11247
-#define MAGIC_ATTUNEMENT_RANK_2 12606
+// Magic Attunement talent IDs
+enum MagicAttunementTalents
+{
+    MAGIC_ATTUNEMENT_RANK_1 = 11247,
+    MAGIC_ATTUNEMENT_RANK_2 = 12606
+};
 
+// Invocation spell family flags: [0] 0x00002000 [1] 0x00000000 [2] 0x00000008
+enum InvocationFamilyFlags : uint32
+{
+    SPELL_FAMILY_FLAG_INVOCATION_0 = 0x00002000,
+    SPELL_FAMILY_FLAG_INVOCATION_1 = 0x00000000,
+    SPELL_FAMILY_FLAG_INVOCATION_2 = 0x00000008
+};
+
+// Safe Magic Attunement implementation using core patterns
 class spell_magic_attunement_handler : public PlayerScript
 {
 public:
@@ -23,75 +36,121 @@ public:
         if (!spellInfo)
             return;
 
-        // Check if player has Magic Attunement talent
-        uint8 talentRank = GetMagicAttunementRank(player);
-        if (talentRank == 0)
+        // Use GetAuraEffectOfRankedSpell like core scripts for safe talent checking
+        AuraEffect const* talentAurEff = player->GetAuraEffectOfRankedSpell(MAGIC_ATTUNEMENT_RANK_1, EFFECT_0);
+        if (!talentAurEff)
             return;
 
-        // Check if Invocation is active
+        // Check for Invocation using GetAuraEffect (much safer than iteration)
         if (!HasInvocationActive(player))
             return;
 
-        // Check if this spell has a mana cost
         uint32 manaCost = spell->GetPowerCost();
         if (manaCost == 0)
             return;
 
         // Calculate mana return based on talent rank
-        uint32 manaReturn = 0;
-        if (talentRank == 1)
-        {
-            manaReturn = manaCost; // 100% return
-        }
-        else if (talentRank == 2)
-        {
-            manaReturn = manaCost * 2; // 200% return
-        }
+        int32 manaReturnPercent = GetMagicAttunementPercent(player);
+        if (manaReturnPercent == 0)
+            return;
 
+        int32 manaReturn = CalculatePct(manaCost, manaReturnPercent);
         if (manaReturn > 0)
         {
-            // Return mana to the player
             player->ModifyPower(POWER_MANA, manaReturn);
+            
+            LOG_DEBUG("scripts", "Magic Attunement: Returned {} mana ({}% of {} cost) to player {}", 
+                     manaReturn, manaReturnPercent, manaCost, player->GetName());
         }
     }
 
 private:
-    uint8 GetMagicAttunementRank(Player* player)
-    {
-        if (player->HasTalent(MAGIC_ATTUNEMENT_RANK_2, player->GetActiveSpec()))
-            return 2;
-        else if (player->HasTalent(MAGIC_ATTUNEMENT_RANK_1, player->GetActiveSpec()))
-            return 1;
-        return 0;
-    }
-
     bool HasInvocationActive(Player* player)
     {
-        // Check all auras on the player for Invocation family flag
-        Unit::AuraApplicationMap const& auras = player->GetAppliedAuras();
-        for (auto const& auraPair : auras)
+        if (!player)
+            return false;
+
+        // Use HasAura for simple spell family checking (much safer)
+        // Check for common Invocation spells by ID instead of family flags
+        return player->HasAura(604) || // Invocation
+               player->HasAura(8450) || // Invocation Rank 2
+               player->HasAura(8451) || // Invocation Rank 3
+               player->HasAura(10173) ||   // Invocation Rank 4
+               player->HasAura(10174) ||   // Invocation Rank 5
+               player->HasAura(33944) ||   // Invocation Rank 6
+               player->HasAura(43015);   // Invocation Rank 7
+    }
+
+    int32 GetMagicAttunementPercent(Player* player)
+    {
+        if (!player)
+            return 0;
+
+        // Use GetAuraEffectOfRankedSpell for safe talent checking
+        if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(MAGIC_ATTUNEMENT_RANK_2, EFFECT_0))
         {
-            AuraApplication const* aurApp = auraPair.second;
-            if (!aurApp)
-                continue;
-
-            Aura const* aura = aurApp->GetBase();
-            if (!aura)
-                continue;
-
-            SpellInfo const* spellInfo = aura->GetSpellInfo();
-            if (!spellInfo)
-                continue;
-
-            // Check if this spell matches Invocation family flag
-            // Family flag: [0] 0x00002000 [1] 0x00000000 [2] 0x00000008
-            if (spellInfo->SpellFamilyFlags[0] & 0x00002000 && 
-                spellInfo->SpellFamilyFlags[2] & 0x00000008)
-            {
-                return true;
-            }
+            return 200; // Rank 2: 200% return
         }
-        return false;
+        else if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(MAGIC_ATTUNEMENT_RANK_1, EFFECT_0))
+        {
+            return 100; // Rank 1: 100% return
+        }
+        
+        return 0; // No Magic Attunement talent
+    }
+};
+
+// Magic Attunement talent aura scripts (passive talents)
+class spell_magic_attunement_rank_1 : public AuraScript
+{
+    PrepareAuraScript(spell_magic_attunement_rank_1);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ MAGIC_ATTUNEMENT_RANK_1 });
+    }
+
+    void Register() override
+    {
+        // This is a passive talent, the actual effect is handled by the PlayerScript
+    }
+};
+
+class spell_magic_attunement_rank_2 : public AuraScript
+{
+    PrepareAuraScript(spell_magic_attunement_rank_2);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ MAGIC_ATTUNEMENT_RANK_2 });
+    }
+
+    void Register() override
+    {
+        // This is a passive talent, the actual effect is handled by the PlayerScript
+    }
+};
+
+// Spell script loaders
+class spell_magic_attunement_rank_1_loader : public SpellScriptLoader
+{
+public:
+    spell_magic_attunement_rank_1_loader() : SpellScriptLoader("spell_magic_attunement_rank_1") { }
+
+    AuraScript* GetAuraScript() const override
+    {
+        return new spell_magic_attunement_rank_1();
+    }
+};
+
+class spell_magic_attunement_rank_2_loader : public SpellScriptLoader
+{
+public:
+    spell_magic_attunement_rank_2_loader() : SpellScriptLoader("spell_magic_attunement_rank_2") { }
+
+    AuraScript* GetAuraScript() const override
+    {
+        return new spell_magic_attunement_rank_2();
     }
 };
 
@@ -99,4 +158,6 @@ private:
 void AddSC_magic_attunement()
 {
     new spell_magic_attunement_handler();
+    new spell_magic_attunement_rank_1_loader();
+    new spell_magic_attunement_rank_2_loader();
 }

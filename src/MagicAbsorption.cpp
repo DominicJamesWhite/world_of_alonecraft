@@ -13,98 +13,70 @@ enum MagicAbsorptionTalents
     SPELL_MAGIC_ABSORPTION_RANK_2 = 29444   // 50% damage reduction
 };
 
-// Mana Shield spell family flags: [0] 0x00008000 [1] 0x00000000 [2] 0x00000008
-enum ManaShieldFamilyFlags : uint32
-{
-    SPELL_FAMILY_FLAG_MANA_SHIELD_0 = 0x00008000,
-    SPELL_FAMILY_FLAG_MANA_SHIELD_1 = 0x00000000,
-    SPELL_FAMILY_FLAG_MANA_SHIELD_2 = 0x00000008
-};
-
-class spell_magic_absorption_damage_handler : public UnitScript
+// Safe Magic Absorption implementation using UnitScript (with proper safety checks)
+class spell_magic_absorption_handler : public UnitScript
 {
 public:
-    spell_magic_absorption_damage_handler() : UnitScript("spell_magic_absorption_damage_handler") 
-    { 
-        LOG_ERROR("scripts", "Magic Absorption: UnitScript constructor called - script is loading!");
-    }
+    spell_magic_absorption_handler() : UnitScript("spell_magic_absorption_handler") { }
 
     void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
     {
+        if (!victim || damage == 0)
+            return;
+
         Player* player = victim->ToPlayer();
         if (!player)
             return;
 
-        // Check if player has Mana Shield active using spell family flags
-        bool hasManaShield = HasManaShield(player);
-
-        
-        if (!hasManaShield)
+        // Check if player has Magic Absorption talent (safe method)
+        AuraEffect const* talentAurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_1, EFFECT_0);
+        if (!talentAurEff)
             return;
 
-        // Check if player has Magic Absorption talent
-        int32 damageReductionPercent = GetMagicAbsorptionReduction(player);
-        
-        if (damageReductionPercent == 0)
+        // Check if player has Mana Shield active (safe method using HasAura)
+        if (!player->HasAura(1463) &&   // Mana Shield Rank 1
+            !player->HasAura(8494) &&   // Mana Shield Rank 2
+            !player->HasAura(8495) &&   // Mana Shield Rank 3
+            !player->HasAura(10191) &&  // Mana Shield Rank 4
+            !player->HasAura(10192) &&  // Mana Shield Rank 5
+            !player->HasAura(10193) &&  // Mana Shield Rank 6
+            !player->HasAura(27131) &&  // Mana Shield Rank 7
+            !player->HasAura(43019) &&  // Mana Shield Rank 8
+            !player->HasAura(43020))    // Mana Shield Rank 9
             return;
 
-        // Get player's spell critical strike chance (like warlock spells do)
-        float spellCritChance = player->GetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + static_cast<uint8>(SPELL_SCHOOL_ARCANE));
-        float meleeCritChance = player->GetFloatValue(PLAYER_CRIT_PERCENTAGE);
+        // Get spell crit chance safely
+        float critChance = player->GetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + static_cast<uint8>(SPELL_SCHOOL_ARCANE));
         
+        if (!roll_chance_f(critChance))
+            return;
 
-        
-        // Use spell crit chance for Magic Absorption proc
-        float critChance = spellCritChance;
-        
-        // Roll for Magic Absorption proc
-        bool procced = roll_chance_f(critChance);
-
-        
-        if (!procced)
+        // Get damage reduction based on talent rank
+        int32 reductionPercent = GetMagicAbsorptionReduction(player);
+        if (reductionPercent == 0)
             return;
 
         // Apply damage reduction
         uint32 originalDamage = damage;
-        damage = (damage * damageReductionPercent) / 100;
-        
+        damage = (damage * reductionPercent) / 100;
         uint32 reducedAmount = originalDamage - damage;
-        
+
+        LOG_DEBUG("scripts", "Magic Absorption: Reduced damage from {} to {} ({}% reduction)", 
+                 originalDamage, damage, 100 - reductionPercent);
     }
 
 private:
-    bool HasManaShield(Player* player)
-    {
-        // Check for any Mana Shield aura using spell family flags
-        Unit::AuraApplicationMap const& auras = player->GetAppliedAuras();
-    
-        
-        for (auto const& auraPair : auras)
-        {
-            Aura const* aura = auraPair.second->GetBase();
-            SpellInfo const* spellInfo = aura->GetSpellInfo();
-            
-            if (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE &&
-                spellInfo->SpellFamilyFlags[0] & SPELL_FAMILY_FLAG_MANA_SHIELD_0 &&
-                spellInfo->SpellFamilyFlags[1] == SPELL_FAMILY_FLAG_MANA_SHIELD_1 &&
-                spellInfo->SpellFamilyFlags[2] & SPELL_FAMILY_FLAG_MANA_SHIELD_2)
-            {
-                LOG_INFO("scripts", "Magic Absorption Debug: Found Mana Shield spell {} (ID: {})", 
-                    spellInfo->SpellName[0], spellInfo->Id);
-                return true;
-            }
-        }
-        return false;
-    }
-
     int32 GetMagicAbsorptionReduction(Player* player)
     {
-        // Check for Magic Absorption talents
-        if (player->HasAura(SPELL_MAGIC_ABSORPTION_RANK_2))
+        if (!player)
+            return 0;
+
+        // Use GetAuraEffectOfRankedSpell for safe talent checking
+        if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_2, EFFECT_0))
         {
             return 50; // Rank 2: 50% damage
         }
-        else if (player->HasAura(SPELL_MAGIC_ABSORPTION_RANK_1))
+        else if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_1, EFFECT_0))
         {
             return 75; // Rank 1: 75% damage
         }
@@ -170,7 +142,7 @@ public:
 // Registration
 void AddSC_magic_absorption()
 {
-    new spell_magic_absorption_damage_handler();
+    new spell_magic_absorption_handler();
     new spell_magic_absorption_rank_1_loader();
     new spell_magic_absorption_rank_2_loader();
 }
