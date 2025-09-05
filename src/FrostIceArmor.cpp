@@ -31,6 +31,20 @@ class spell_frost_ice_armor_enhanced : public AuraScript
             // Using similar scaling to Fire/Frost Ward (+80.68% from sp bonus)
             float bonus = 0.8068f;
 
+            // Frozen Core talent check
+            if (caster->HasAura(31669)) // Rank 3
+            {
+                bonus += 4.50f; // +450%
+            }
+            else if (caster->HasAura(31668)) // Rank 2
+            {
+                bonus += 3.00f; // +300%
+            }
+            else if (caster->HasAura(31667)) // Rank 1
+            {
+                bonus += 1.50f; // +150%
+            }
+
             bonus *= caster->SpellBaseDamageBonusDone(GetSpellInfo()->GetSchoolMask());
             bonus *= caster->CalculateLevelPenalty(GetSpellInfo());
 

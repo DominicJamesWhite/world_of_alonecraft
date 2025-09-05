@@ -21,6 +21,10 @@ void AddSC_arcane_fortitude_mana_shield();
 void AddSC_magic_absorption();
 void AddSC_magic_attunement();
 void AddSC_arcane_stability_mechanic();
+void AddSC_fire_leech_mechanic();
+void AddSC_firebreak_mechanic();
+void AddSC_molten_shields_fire_ward();
+void AddSC_spark_of_alar();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -45,4 +49,8 @@ void Addworld_of_alonecraftScripts()
     AddSC_magic_absorption();
     AddSC_magic_attunement();
     AddSC_arcane_stability_mechanic();
+    AddSC_fire_leech_mechanic();
+    AddSC_firebreak_mechanic();
+    AddSC_molten_shields_fire_ward();
+    AddSC_spark_of_alar();
 }

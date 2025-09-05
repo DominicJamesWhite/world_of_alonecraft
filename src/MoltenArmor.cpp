@@ -6,7 +6,6 @@
 #include "Unit.h"
 #include "Log.h"
 
-#define MOLTEN_ARMOR_SPELL_ID 43046
 #define EMBER_SCARS_DOT_ID 200023
 #define EMBER_SCARS_REMOVAL_CD 200024
 
@@ -26,7 +25,7 @@ public:
             return;
 
         // Check if player has Molten Armor active
-        if (!player->HasAura(MOLTEN_ARMOR_SPELL_ID))
+        if (!(player->HasAura(30482) || player->HasAura(43045) || player->HasAura(43046)))
             return;
 
         // Split damage: 50% instant, 50% to DoT
@@ -44,50 +43,36 @@ private:
     void AddOrUpdateEmberScars(Player* player, uint32 damageToAdd)
     {
         Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
-        uint32 totalStoredDamage = 0;
-        uint8 currentStacks = 0;
+        uint32 currentTickDamage = 0;
 
         if (emberScars)
         {
-            // Get current stored damage from effect amount (we'll store total damage here)
-            AuraEffect* effect = emberScars->GetEffect(EFFECT_0);
-            if (effect)
+            if (AuraEffect* effect = emberScars->GetEffect(EFFECT_0))
             {
-                // We're storing total damage * 100 to avoid float precision issues
-                totalStoredDamage = effect->GetAmount() * 10;
-                currentStacks = emberScars->GetStackAmount();
+                currentTickDamage = effect->GetAmount();
             }
         }
 
-        // Add new damage
-        totalStoredDamage += damageToAdd;
-
-        // Calculate new stack count (max 5, but damage can exceed)
-        uint8 newStacks = std::min<uint8>(currentStacks + 1, 5);
+        // Calculate new tick damage to add (damage is over 10 seconds)
+        uint32 newTickDamage = damageToAdd / 10;
+        uint32 totalTickDamage = currentTickDamage + newTickDamage;
 
         if (!emberScars)
         {
-            // Apply the DoT aura
+            // Apply the DoT aura and get it
             player->AddAura(EMBER_SCARS_DOT_ID, player);
             emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
         }
 
         if (emberScars)
         {
-            // Set stack amount
+            uint8 newStacks = std::min<uint8>(emberScars->GetStackAmount() + 1, 5);
             emberScars->SetStackAmount(newStacks);
+            emberScars->RefreshDuration();
 
-            // Calculate tick damage (10% of total damage per second)
-            uint32 tickDamage = totalStoredDamage / 10;
-
-            // Store total damage in the effect amount (divided by 10 to fit)
-            AuraEffect* effect = emberScars->GetEffect(EFFECT_0);
-            if (effect)
+            if (AuraEffect* effect = emberScars->GetEffect(EFFECT_0))
             {
-                emberScars->RefreshDuration();
-                effect->ChangeAmount(totalStoredDamage / 10);
-                // Update the periodic damage
-                effect->SetPeriodicTimer(1000); // 1 second intervals
+                effect->ChangeAmount(totalTickDamage);
             }
         }
     }
@@ -101,7 +86,7 @@ public:
     void OnPlayerSpellCast(Player* player, Spell* spell, bool skipCheck) override
     {
         // Check if this is a fire spell critical hit
-        if (!IsFireSpell(spell->GetSpellInfo()) || !player->HasAura(MOLTEN_ARMOR_SPELL_ID))
+        if (!IsFireSpell(spell->GetSpellInfo()) || !(player->HasAura(30482) || player->HasAura(43045) || player->HasAura(43046)))
             return;
 
         // Check if it was a critical hit (simplified - you may need to adjust this)
@@ -122,7 +107,6 @@ public:
 private:
     void RemoveEmberScarsStack(Player* player)
     {
-
         Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
         if (!emberScars || emberScars->GetStackAmount() == 0)
             return;
@@ -131,28 +115,35 @@ private:
         if (!effect)
             return;
 
-        // Get current total damage
-        uint32 totalDamage = effect->GetAmount() * 10;
+        uint32 currentTickDamage = effect->GetAmount();
+        uint8 currentStacks = emberScars->GetStackAmount();
 
-        // Remove 20% of damage (keep 80%)
-        uint32 newTotalDamage = (totalDamage * 80) / 100;
+        // Check for specific auras to remove 2 stacks
+        bool hasSpecialAura = player->HasAura(11083) || player->HasAura(12351);
+        uint8 stacksToRemove = hasSpecialAura ? 2 : 1;
+        uint32 damageReductionPercent = hasSpecialAura ? 40 : 20;
 
-        // Remove one stack
-        uint8 newStacks = emberScars->GetStackAmount() - 1;
-
-        if (newStacks == 0 || newTotalDamage == 0)
+        // Ensure we don't remove more stacks than available
+        if (currentStacks < stacksToRemove)
         {
-            // Remove the aura completely
+            stacksToRemove = currentStacks;
+            damageReductionPercent = stacksToRemove * 20;
+        }
+
+        // Reduce tick damage
+        uint32 newTickDamage = (currentTickDamage * (100 - damageReductionPercent)) / 100;
+
+        // Remove stacks
+        uint8 newStacks = currentStacks - stacksToRemove;
+
+        if (newStacks == 0 || newTickDamage == 0)
+        {
             emberScars->Remove();
             return;
         }
 
-        // Update stack count
         emberScars->SetStackAmount(newStacks);
-
-        // Update stored damage and tick damage
-        uint32 newTickDamage = newTotalDamage / 10;
-        effect->ChangeAmount(newTotalDamage / 10);
+        effect->ChangeAmount(newTickDamage);
     }
 
     bool IsFireSpell(SpellInfo const* spell)
@@ -177,30 +168,19 @@ class spell_ember_scars_AuraScript : public AuraScript
         if (!target || !caster)
             return;
 
-        // Get the stored total damage
-        uint32 totalDamage = aurEff->GetAmount() * 10;
-        
-        // Calculate 10% damage for this tick
-        uint32 tickDamage = totalDamage / 10;
+        // The amount is the tick damage
+        uint32 tickDamage = aurEff->GetAmount();
 
         if (tickDamage > 0)
         {
             // Deal the tick damage
             Unit::DealDamage(caster, target, tickDamage, nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_FIRE, aurEff->GetSpellInfo(), false);
         }
-
-        // Reduce total stored damage by the amount we just dealt
-        uint32 remainingDamage = totalDamage - tickDamage;
-        
-        if (remainingDamage == 0)
+        else
         {
-            // No damage left, remove the aura
+            // No damage per tick, remove the aura
             GetAura()->Remove();
-            return;
         }
-
-        // Update stored damage
-        const_cast<AuraEffect*>(aurEff)->ChangeAmount(remainingDamage / 10);
     }
 
     void Register() override
