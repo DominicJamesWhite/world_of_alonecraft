@@ -5,6 +5,14 @@
 #include "SpellScriptLoader.h"
 #include "Unit.h"
 #include "Log.h"
+#include "Spell.h"
+
+enum AblativeArmorSpells
+{
+    SPELL_ABLATIVE_ARMOR_R1 = 11160,
+    SPELL_ABLATIVE_ARMOR_R2 = 12518,
+    SPELL_ABLATIVE_ARMOR_R3 = 12519
+};
 
 // Spell family flags for Frost/Ice Armor
 // Both Ice Armor and Frost Armor use the same family flag: 0x02080000
@@ -15,6 +23,30 @@ class spell_frost_ice_armor_enhanced : public AuraScript
 {
     PrepareAuraScript(spell_frost_ice_armor_enhanced);
 
+private:
+    void UpdateAblativeArmor(Unit* caster)
+    {
+        if (!caster)
+            return;
+
+        Aura* ablativeAura = nullptr;
+        if (caster->HasAura(SPELL_ABLATIVE_ARMOR_R3))
+            ablativeAura = caster->GetAura(SPELL_ABLATIVE_ARMOR_R3);
+        else if (caster->HasAura(SPELL_ABLATIVE_ARMOR_R2))
+            ablativeAura = caster->GetAura(SPELL_ABLATIVE_ARMOR_R2);
+        else if (caster->HasAura(SPELL_ABLATIVE_ARMOR_R1))
+            ablativeAura = caster->GetAura(SPELL_ABLATIVE_ARMOR_R1);
+
+        if (ablativeAura)
+        {
+            if (AuraEffect* eff = ablativeAura->GetEffect(EFFECT_1))
+            {
+                eff->RecalculateAmount();
+            }
+        }
+    }
+
+public:
     bool Validate(SpellInfo const* spellInfo) override
     {
         // Validate that this is a Frost/Ice Armor spell by checking family flags
@@ -52,10 +84,22 @@ class spell_frost_ice_armor_enhanced : public AuraScript
         }
     }
 
+    void AfterApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        UpdateAblativeArmor(GetCaster());
+    }
+
+    void AfterRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        UpdateAblativeArmor(GetCaster());
+    }
+
     void Register() override
     {
         // Apply spellpower scaling to the armor bonus effect
         DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_frost_ice_armor_enhanced::CalculateAmount, EFFECT_0, SPELL_AURA_MOD_RESISTANCE);
+        AfterEffectApply += AuraEffectApplyFn(spell_frost_ice_armor_enhanced::AfterApply, EFFECT_ALL, SPELL_AURA_ANY, AURA_EFFECT_HANDLE_REAL);
+        AfterEffectRemove += AuraEffectRemoveFn(spell_frost_ice_armor_enhanced::AfterRemove, EFFECT_ALL, SPELL_AURA_ANY, AURA_EFFECT_HANDLE_REAL);
     }
 };
 

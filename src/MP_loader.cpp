@@ -25,12 +25,14 @@ void AddSC_fire_leech_mechanic();
 void AddSC_firebreak_mechanic();
 void AddSC_molten_shields_fire_ward();
 void AddSC_spark_of_alar();
+void AddSC_spell_mage_ablative_armor();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
 // additionally replace all '-' in the module folder name with '_' here
 void Addworld_of_alonecraftScripts()
 {
+    AddSC_spell_mage_ablative_armor();
     AddMyPlayerScripts();
     AddSC_spell_bloomstrike();
     AddSC_aura_proc_self_hot_only();
