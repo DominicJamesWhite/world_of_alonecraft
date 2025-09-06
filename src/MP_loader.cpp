@@ -16,6 +16,7 @@ void AddSC_spell_no_swing_reset_arakkoa();
 void AddSC_spell_mage_mage_armor_custom();
 void AddSC_molten_armor_mechanic();
 void AddSC_spell_mage_aegis_of_antonidas();
+void AddSC_spell_mage_shattered_barrier_cooldown_reset();
 void AddSC_frost_ice_armor_enhanced();
 void AddSC_arcane_fortitude_mana_shield();
 void AddSC_magic_absorption();
@@ -46,6 +47,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_spell_mage_mage_armor_custom();
     AddSC_molten_armor_mechanic();
     AddSC_spell_mage_aegis_of_antonidas();
+    AddSC_spell_mage_shattered_barrier_cooldown_reset();
     AddSC_frost_ice_armor_enhanced();
     AddSC_arcane_fortitude_mana_shield();
     AddSC_magic_absorption();
