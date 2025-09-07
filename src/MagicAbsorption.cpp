@@ -1,148 +1,118 @@
 #include "ScriptMgr.h"
-#include "Player.h"
 #include "SpellScript.h"
 #include "SpellAuraEffects.h"
 #include "SpellScriptLoader.h"
+#include "Player.h"
 #include "Unit.h"
-#include "Log.h"
+#include "Common.h"
 
-// Magic Absorption talent IDs
-enum MagicAbsorptionTalents
+enum MagicAbsorptionSpells
 {
-    SPELL_MAGIC_ABSORPTION_RANK_1 = 29441,  // 75% damage reduction
-    SPELL_MAGIC_ABSORPTION_RANK_2 = 29444   // 50% damage reduction
+    // Absorb aura spell IDs by rank
+    SPELL_MAGIC_ABSORPTION_ABSORB_R1 = 200035, // 25%
+    SPELL_MAGIC_ABSORPTION_ABSORB_R2 = 200036  // 50%
 };
 
-// Safe Magic Absorption implementation using UnitScript (with proper safety checks)
-class spell_magic_absorption_handler : public UnitScript
+// Magic Absorption (refactored):
+// - Absorbs 25% / 50% of incoming damage based on aura spell ID (200035 / 200036)
+// - Procs with chance equal to player's Arcane spell crit chance
+// - Large absorb pool so aura persists across many hits
+class spell_magic_absorption_absorb_aura : public AuraScript
 {
-public:
-    spell_magic_absorption_handler() : UnitScript("spell_magic_absorption_handler") { }
+    PrepareAuraScript(spell_magic_absorption_absorb_aura);
 
-    void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
+    bool Validate(SpellInfo const* spellInfo) override
     {
-        if (!victim || damage == 0)
-            return;
+        if (spellInfo->Id != SPELL_MAGIC_ABSORPTION_ABSORB_R1 && spellInfo->Id != SPELL_MAGIC_ABSORPTION_ABSORB_R2)
+            return false;
 
-        Player* player = victim->ToPlayer();
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+            if (spellInfo->Effects[i].ApplyAuraName == SPELL_AURA_SCHOOL_ABSORB)
+                return true;
+
+        return false;
+    }
+
+    static float GetArcaneSpellCritChance(Player* player)
+    {
+        // Use Arcane school spell crit chance
+        return player->GetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + static_cast<uint8>(SPELL_SCHOOL_ARCANE));
+    }
+
+    // Ensure the absorb aura has a very large pool so it doesn't get consumed after the first hit
+    void CalculateAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& canBeRecalculated)
+    {
+        canBeRecalculated = false;
+        amount = 2000000000; // ~2B absorb pool
+    }
+
+    void Absorb(AuraEffect* aurEff, DamageInfo& dmgInfo, uint32& absorbAmount)
+    {
+        Unit* target = GetTarget();
+        if (!target)
+        {
+            absorbAmount = 0;
+            return;
+        }
+
+        Player* player = target->ToPlayer();
         if (!player)
+        {
+            absorbAmount = 0;
             return;
+        }
 
-        // Check if player has Magic Absorption talent (safe method)
-        AuraEffect const* talentAurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_1, EFFECT_0);
-        if (!talentAurEff)
+        // Determine percent by aura spell id (200035/200036)
+        float pct = 0.0f;
+        uint32 auraId = aurEff->GetSpellInfo()->Id;
+
+        if (auraId == SPELL_MAGIC_ABSORPTION_ABSORB_R2) pct = 0.50f;
+        else if (auraId == SPELL_MAGIC_ABSORPTION_ABSORB_R1) pct = 0.25f;
+
+        if (pct <= 0.0f)
+        {
+            absorbAmount = 0;
             return;
+        }
 
-        // Check if player has Mana Shield active (safe method using HasAura)
-        if (!player->HasAura(1463) &&   // Mana Shield Rank 1
-            !player->HasAura(8494) &&   // Mana Shield Rank 2
-            !player->HasAura(8495) &&   // Mana Shield Rank 3
-            !player->HasAura(10191) &&  // Mana Shield Rank 4
-            !player->HasAura(10192) &&  // Mana Shield Rank 5
-            !player->HasAura(10193) &&  // Mana Shield Rank 6
-            !player->HasAura(27131) &&  // Mana Shield Rank 7
-            !player->HasAura(43019) &&  // Mana Shield Rank 8
-            !player->HasAura(43020))    // Mana Shield Rank 9
-            return;
-
-        // Get spell crit chance safely
-        float critChance = player->GetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1 + static_cast<uint8>(SPELL_SCHOOL_ARCANE));
-        
+        float critChance = GetArcaneSpellCritChance(player);
         if (!roll_chance_f(critChance))
-            return;
-
-        // Get damage reduction based on talent rank
-        int32 reductionPercent = GetMagicAbsorptionReduction(player);
-        if (reductionPercent == 0)
-            return;
-
-        // Apply damage reduction
-        uint32 originalDamage = damage;
-        damage = (damage * reductionPercent) / 100;
-        uint32 reducedAmount = originalDamage - damage;
-
-        LOG_DEBUG("scripts", "Magic Absorption: Reduced damage from {} to {} ({}% reduction)", 
-                 originalDamage, damage, 100 - reductionPercent);
-    }
-
-private:
-    int32 GetMagicAbsorptionReduction(Player* player)
-    {
-        if (!player)
-            return 0;
-
-        // Use GetAuraEffectOfRankedSpell for safe talent checking
-        if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_2, EFFECT_0))
         {
-            return 50; // Rank 2: 50% damage
+            absorbAmount = 0;
+            return;
         }
-        else if (AuraEffect const* aurEff = player->GetAuraEffectOfRankedSpell(SPELL_MAGIC_ABSORPTION_RANK_1, EFFECT_0))
-        {
-            return 75; // Rank 1: 75% damage
-        }
-        
-        return 0; // No Magic Absorption talent
-    }
-};
 
-// Enhanced Magic Absorption talents with proper descriptions
-class spell_magic_absorption_rank_1 : public AuraScript
-{
-    PrepareAuraScript(spell_magic_absorption_rank_1);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_MAGIC_ABSORPTION_RANK_1 });
+        uint32 damage = dmgInfo.GetDamage();
+        absorbAmount = static_cast<uint32>(float(damage) * pct);
     }
 
     void Register() override
     {
-        // This is a passive talent, the actual effect is handled by the UnitScript
+        // Ensure the absorb aura has a very large pool (avoid consuming/removing after first hit)
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_0, SPELL_AURA_SCHOOL_ABSORB);
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_1, SPELL_AURA_SCHOOL_ABSORB);
+        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_2, SPELL_AURA_SCHOOL_ABSORB);
+
+        // Hook absorb on any absorb effect index (0..2)
+        OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_0);
+        OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_1);
+        OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_2);
     }
 };
 
-class spell_magic_absorption_rank_2 : public AuraScript
-{
-    PrepareAuraScript(spell_magic_absorption_rank_2);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_MAGIC_ABSORPTION_RANK_2 });
-    }
-
-    void Register() override
-    {
-        // This is a passive talent, the actual effect is handled by the UnitScript
-    }
-};
-
-// Spell script loaders
-class spell_magic_absorption_rank_1_loader : public SpellScriptLoader
+class spell_magic_absorption_absorb_loader : public SpellScriptLoader
 {
 public:
-    spell_magic_absorption_rank_1_loader() : SpellScriptLoader("spell_magic_absorption_rank_1") { }
+    spell_magic_absorption_absorb_loader() : SpellScriptLoader("spell_magic_absorption_absorb") { }
 
     AuraScript* GetAuraScript() const override
     {
-        return new spell_magic_absorption_rank_1();
-    }
-};
-
-class spell_magic_absorption_rank_2_loader : public SpellScriptLoader
-{
-public:
-    spell_magic_absorption_rank_2_loader() : SpellScriptLoader("spell_magic_absorption_rank_2") { }
-
-    AuraScript* GetAuraScript() const override
-    {
-        return new spell_magic_absorption_rank_2();
+        return new spell_magic_absorption_absorb_aura();
     }
 };
 
 // Registration
 void AddSC_magic_absorption()
 {
-    new spell_magic_absorption_handler();
-    new spell_magic_absorption_rank_1_loader();
-    new spell_magic_absorption_rank_2_loader();
+    new spell_magic_absorption_absorb_loader();
 }
