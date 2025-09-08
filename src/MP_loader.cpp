@@ -28,6 +28,7 @@ void AddSC_molten_shields_fire_ward();
 void AddSC_spark_of_alar();
 void AddSC_spell_mage_ablative_armor();
 void AddSC_permafrost_absorb();
+void AddSC_ice_lance_heal_mechanic();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -59,4 +60,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_molten_shields_fire_ward();
     AddSC_spark_of_alar();
     AddSC_permafrost_absorb();
+    AddSC_ice_lance_heal_mechanic();
 }
