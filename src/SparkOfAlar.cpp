@@ -33,26 +33,19 @@ private:
         if (!victim->IsPlayer())
             return;
 
-        LOG_ERROR("scripts", "Spark of Alar: Absorb hook triggered for player {}.", victim->GetName());
-        LOG_ERROR("scripts", "Spark of Alar: Health: {}, Damage: {}", victim->GetHealth(), dmgInfo.GetDamage());
-
         int32 remainingHealth = int32(victim->GetHealth()) - int32(dmgInfo.GetDamage());
         bool isFatal = remainingHealth <= 0;
         bool hasCooldown = victim->HasAura(SPARK_OF_ALAR_COOLDOWN_DEBUFF);
 
         if (!isFatal)
         {
-            LOG_ERROR("scripts", "Spark of Alar: Damage is not fatal. Resulting health would be {}.", remainingHealth);
             return;
         }
 
         if (hasCooldown)
         {
-            LOG_ERROR("scripts", "Spark of Alar: Player has cooldown debuff.");
             return;
         }
-
-        LOG_ERROR("scripts", "Spark of Alar: Conditions met. Activating effect.");
 
         // Absorb all the damage
         absorbAmount = dmgInfo.GetDamage();
@@ -60,17 +53,14 @@ private:
         // Heal for 30% of max health
         int32 healAmount = victim->CountPctFromMaxHealth(30);
         victim->CastCustomSpell(SPARK_OF_ALAR_HEAL_SPELL, SPELLVALUE_BASE_POINT0, healAmount, victim, true, nullptr, aurEff);
-        LOG_ERROR("scripts", "Spark of Alar: Healed for {}.", healAmount);
 
         // Apply cooldown debuff
         victim->CastSpell(victim, SPARK_OF_ALAR_COOLDOWN_DEBUFF, true);
-        LOG_ERROR("scripts", "Spark of Alar: Applied cooldown debuff.");
 
         // Remove all stacks of Ember Scars
         if (victim->HasAura(EMBER_SCARS_DOT_ID))
         {
             victim->RemoveAurasDueToSpell(EMBER_SCARS_DOT_ID);
-            LOG_ERROR("scripts", "Spark of Alar: Removed Ember Scars.");
         }
     }
 

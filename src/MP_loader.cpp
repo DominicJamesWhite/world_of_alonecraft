@@ -18,6 +18,7 @@ void AddSC_molten_armor_mechanic();
 void AddSC_spell_mage_aegis_of_antonidas();
 void AddSC_spell_mage_shattered_barrier_cooldown_reset();
 void AddSC_frost_ice_armor_enhanced();
+void AddSC_glacier_armor();
 void AddSC_arcane_fortitude_mana_shield();
 void AddSC_magic_absorption();
 void AddSC_magic_attunement();
@@ -51,6 +52,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_spell_mage_aegis_of_antonidas();
     AddSC_spell_mage_shattered_barrier_cooldown_reset();
     AddSC_frost_ice_armor_enhanced();
+    AddSC_glacier_armor();
     AddSC_arcane_fortitude_mana_shield();
     AddSC_magic_absorption();
     AddSC_magic_attunement();
