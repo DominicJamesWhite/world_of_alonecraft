@@ -30,7 +30,7 @@ void AddSC_spark_of_alar();
 void AddSC_spell_mage_ablative_armor();
 void AddSC_permafrost_absorb();
 void AddSC_ice_lance_heal_mechanic();
-void AddSC_divine_wrath();
+void AddSC_priest_aura_interaction();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -64,5 +64,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_spark_of_alar();
     AddSC_permafrost_absorb();
     AddSC_ice_lance_heal_mechanic();
-    AddSC_divine_wrath();
+    AddSC_priest_aura_interaction();
 }
