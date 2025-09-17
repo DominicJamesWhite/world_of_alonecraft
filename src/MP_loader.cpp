@@ -32,6 +32,7 @@ void AddSC_permafrost_absorb();
 void AddSC_ice_lance_heal_mechanic();
 void AddSC_priest_aura_interaction();
 void AddSC_mark_of_penitence();
+void AddSC_spell_killing_word();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -67,4 +68,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_ice_lance_heal_mechanic();
     AddSC_priest_aura_interaction();
     AddSC_mark_of_penitence();
+    AddSC_spell_killing_word();
 }
