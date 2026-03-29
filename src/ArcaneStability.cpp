@@ -95,8 +95,5 @@ private:
 
 void AddSC_arcane_stability_mechanic()
 {
-    for (uint32 spellId : ARCANE_MISSILES_SPELLS)
-    {
-        RegisterSpellScript(spell_mage_arcane_stability_proc, spellId);
-    }
+    RegisterSpellScript(spell_mage_arcane_stability_proc);
 }
