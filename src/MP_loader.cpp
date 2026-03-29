@@ -34,6 +34,7 @@ void AddSC_priest_aura_interaction();
 void AddSC_mark_of_penitence();
 void AddSC_spell_killing_word();
 void AddSC_divine_aegis_damage_mechanic();
+void AddSC_priest_refresh_dots();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -69,6 +70,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_ice_lance_heal_mechanic();
     AddSC_priest_aura_interaction();
     AddSC_mark_of_penitence();
+    AddSC_priest_refresh_dots();
     AddSC_spell_killing_word();
     AddSC_divine_aegis_damage_mechanic();
 }

@@ -21,7 +21,8 @@ class spell_killing_word_shadow_word_death : public SpellScript
 
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ 14523, 14784, 14785 }); // Killing Word ranks 1, 2, 3
+        // Killing Word ranks and self-damage reducers (extra auras) + PW:S ranks required for reduction
+        return ValidateSpellInfo({ 14523, 14784, 14785, 14748, 14768, 14769, 17, 592, 600, 3747, 6065, 6066, 10898, 10899, 10900, 10901, 25217, 25218, 27607, 48065, 48066 }); // Include extra auras and PW:S ranks required for reduction
     }
 
     void HandleOnHit()
@@ -126,6 +127,27 @@ class spell_killing_word_shadow_word_death : public SpellScript
         if (AuraEffect* aurEff = caster->GetDummyAuraEffect(SPELLFAMILY_PRIEST, PRIEST_ICON_ID_PAIN_AND_SUFFERING, EFFECT_1))
         {
             AddPct(selfDamage, aurEff->GetAmount());
+        }
+
+        // Additional auras that reduce Shadow Word: Death self-damage (replicates Pain and Suffering behavior)
+        // Requirement: Only apply if the caster currently has Power Word: Shield (any rank).
+        // PW:S spell IDs: 17, 592, 600, 3747, 6065, 6066, 10898, 10899, 10900, 10901, 25217, 25218, 27607, 48065, 48066
+        bool hasPowerWordShield =
+            caster->HasAura(17)   || caster->HasAura(592)  || caster->HasAura(600)  || caster->HasAura(3747) ||
+            caster->HasAura(6065) || caster->HasAura(6066) || caster->HasAura(10898)|| caster->HasAura(10899)||
+            caster->HasAura(10900)|| caster->HasAura(10901)|| caster->HasAura(25217)|| caster->HasAura(25218)||
+            caster->HasAura(27607)|| caster->HasAura(48065)|| caster->HasAura(48066);
+
+        if (hasPowerWordShield)
+        {
+            // 14748, 14768 and 14769 each have a Dummy aura effect with the correct percentage.
+            for (uint32 spellId : { 14748u, 14768u, 14769u })
+            {
+                if (AuraEffect* extra = caster->GetAuraEffect(spellId, EFFECT_0))
+                {
+                    AddPct(selfDamage, extra->GetAmount());
+                }
+            }
         }
 
         // Cast self-damage spell on caster
