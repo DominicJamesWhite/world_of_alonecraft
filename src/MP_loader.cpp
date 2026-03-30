@@ -37,6 +37,9 @@ void AddSC_divine_aegis_damage_mechanic();
 void AddSC_priest_refresh_dots();
 void AddSC_unbreakable_will();
 void AddSC_focused_power();
+void AddSC_martyrdom();
+void AddSC_gnosticism();
+void AddSC_syncretism();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -77,4 +80,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_divine_aegis_damage_mechanic();
     AddSC_unbreakable_will();
     AddSC_focused_power();
+    AddSC_martyrdom();
+    AddSC_gnosticism();
+    AddSC_syncretism();
 }

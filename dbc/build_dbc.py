@@ -58,6 +58,19 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 CSV_PATH = os.path.join(REPO_ROOT, "DBC_data", "Spell.csv")
 
+# ── Talent.dbc Format ──────────────────────────────────────────────────────
+# TalentEntryfmt = "niiiiiiiixxxxixxixxixxx" — 23 fields, all int32, no strings/floats
+TALENT_FIELD_COUNT = 23
+TALENT_RECORD_SIZE = TALENT_FIELD_COUNT * 4  # 92 bytes
+TALENT_COLUMNS = [
+    "ID", "TabID", "TierID", "ColumnIndex",
+    "SpellRank_1", "SpellRank_2", "SpellRank_3", "SpellRank_4", "SpellRank_5",
+    "SpellRank_6", "SpellRank_7", "SpellRank_8", "SpellRank_9",
+    "PrereqTalent_1", "PrereqTalent_2", "PrereqTalent_3",
+    "PrereqRank_1", "PrereqRank_2", "PrereqRank_3",
+    "Flags", "RequiredSpellID", "CategoryMask_1", "CategoryMask_2",
+]
+
 
 def load_field_names():
     """Read the 234 column names from the Spell.csv header."""
@@ -154,6 +167,57 @@ def write_dbc(path, records, string_block):
     print(f"File size: {os.path.getsize(path):,} bytes")
 
 
+# ── Integer-only DBC Read/Write (Talent.dbc, etc.) ─────────────────────────
+
+def read_int_dbc(path, field_count, record_size):
+    """Read a WDBC file where all fields are int32 (no strings).
+
+    Returns dict: id (int) -> list of int32 values.
+    """
+    with open(path, "rb") as f:
+        magic = f.read(4)
+        if magic != WDBC_MAGIC:
+            sys.exit(f"ERROR: {path} is not a valid WDBC file (magic: {magic})")
+
+        rc, fc, rs, ss = struct.unpack("<4I", f.read(16))
+        if fc != field_count:
+            sys.exit(f"ERROR: {path} has {fc} fields, expected {field_count}")
+        if rs != record_size:
+            sys.exit(f"ERROR: {path} record size {rs}, expected {record_size}")
+
+        records = {}
+        for _ in range(rc):
+            data = f.read(rs)
+            values = list(struct.unpack(f"<{field_count}I", data))
+            records[values[0]] = values
+
+        string_block = f.read(ss)
+
+    print(f"Read {len(records)} records from {path}")
+    return records, string_block
+
+
+def write_int_dbc(path, records, field_count, record_size, string_block, sort_key=None):
+    """Write a WDBC file where all fields are uint32 (no strings).
+
+    sort_key: optional function(values_list) -> sort tuple.  If None, sorts by ID.
+    """
+    if sort_key:
+        sorted_values = sorted(records.values(), key=sort_key)
+    else:
+        sorted_values = [records[k] for k in sorted(records.keys())]
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(WDBC_MAGIC)
+        f.write(struct.pack("<4I", len(sorted_values), field_count, record_size, len(string_block)))
+        for values in sorted_values:
+            f.write(struct.pack(f"<{field_count}I", *values))
+        f.write(string_block)
+
+    print(f"Wrote {len(sorted_values)} records to {path}")
+
+
 # ── MySQL ───────────────────────────────────────────────────────────────────
 
 def fetch_overrides(field_names):
@@ -190,58 +254,94 @@ def fetch_overrides(field_names):
     return rows
 
 
+def fetch_talent_overrides():
+    """Fetch custom talent entries from talent_dbc table."""
+    try:
+        conn = mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASS,
+            database=config.MYSQL_DB,
+        )
+    except mysql.connector.Error as e:
+        sys.exit(f"ERROR: Cannot connect to MySQL: {e}")
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT COUNT(*) AS cnt FROM talent_dbc")
+    count = cursor.fetchone()["cnt"]
+    if count == 0:
+        print("No talent overrides in talent_dbc.")
+        cursor.close()
+        conn.close()
+        return []
+
+    cursor.execute("SELECT * FROM talent_dbc")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    print(f"Fetched {len(rows)} custom talent(s) from talent_dbc")
+    return rows
+
+
 # ── MPQ Packing ─────────────────────────────────────────────────────────────
 
-def pack_mpq(output_dir):
-    """Pack the output DBC into patch-4.mpq using mpqcli.
+def pack_mpq(output_dir, dbc_files):
+    """Pack output DBC file(s) into patch-4.mpq using mpqcli.
 
-    If patch-4.mpq already exists, Spell.dbc is replaced in-place so that
+    dbc_files: list of filenames relative to DBFilesClient/ (e.g. ["Spell.dbc", "Talent.dbc"])
+
+    If patch-4.mpq already exists, files are replaced in-place so that
     all other DBC files in the patch are preserved.  If it doesn't exist,
-    a fresh MPQ is created.
+    a fresh MPQ is created with the first file, then remaining files are added.
     """
     mpq_path = os.path.join(output_dir, "patch-4.mpq")
-    dbc_file = os.path.join(output_dir, "DBFilesClient", "Spell.dbc")
 
     # Use local mpqcli.exe next to this script, or fall back to PATH
     local_mpqcli = os.path.join(SCRIPT_DIR, "mpqcli.exe")
     mpqcli = local_mpqcli if os.path.isfile(local_mpqcli) else "mpqcli"
 
-    if os.path.isfile(mpq_path):
-        # Update existing MPQ in-place — preserves all other DBC files
-        cmd = [
-            mpqcli, "add",
-            "--overwrite",
-            "--game", "wow-wotlk",
-            "-p", "DBFilesClient\\Spell.dbc",
-            dbc_file,
-            mpq_path,
-        ]
-        action = "updated"
-    else:
-        # No existing MPQ — create a fresh one
-        cmd = [
-            mpqcli, "create",
-            "--game", "wow-wotlk",
-            "--output", mpq_path,
-            "--name-in-archive", "DBFilesClient\\Spell.dbc",
-            dbc_file,
-        ]
-        action = "created"
+    success = True
+    for idx, dbc_name in enumerate(dbc_files):
+        dbc_file = os.path.join(output_dir, "DBFilesClient", dbc_name)
+        archive_name = f"DBFilesClient\\{dbc_name}"
 
-    print(f"Running: {' '.join(cmd)}")
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"mpqcli error: {result.stderr}")
-            print("WARNING: mpqcli failed. Spell.dbc was still written - pack it manually.")
+        if os.path.isfile(mpq_path):
+            cmd = [
+                mpqcli, "add",
+                "--overwrite",
+                "--game", "wow-wotlk",
+                "-p", archive_name,
+                dbc_file,
+                mpq_path,
+            ]
+            action = "updated"
+        else:
+            cmd = [
+                mpqcli, "create",
+                "--game", "wow-wotlk",
+                "--output", mpq_path,
+                "--name-in-archive", archive_name,
+                dbc_file,
+            ]
+            action = "created"
+
+        print(f"Running: {' '.join(cmd)}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"mpqcli error: {result.stderr}")
+                print(f"WARNING: mpqcli failed for {dbc_name}. DBC was still written - pack manually.")
+                success = False
+                continue
+            print(result.stdout.strip())
+            print(f"MPQ {action} with {dbc_name}: {mpq_path}")
+        except FileNotFoundError:
+            print(f"WARNING: mpqcli not found. DBC files were still written - pack manually.")
+            print("Download mpqcli.exe from: https://github.com/TheGrayDot/mpqcli/releases")
             return False
-        print(result.stdout.strip())
-        print(f"MPQ {action}: {mpq_path}")
-        return True
-    except FileNotFoundError:
-        print("WARNING: mpqcli not found. Spell.dbc was still written - pack it manually.")
-        print("Download mpqcli.exe from: https://github.com/TheGrayDot/mpqcli/releases")
-        return False
+
+    return success
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -251,6 +351,11 @@ def main():
     print("Alonecraft DBC Build Pipeline")
     print("=" * 60)
 
+    output_dir = os.path.join(SCRIPT_DIR, config.OUTPUT_DIR)
+    dbc_files = []
+
+    # ── Spell.dbc ──────────────────────────────────────────────
+    print("\n--- Spell.dbc ---")
     field_names = load_field_names()
 
     if not os.path.isfile(config.BASE_DBC_PATH):
@@ -279,15 +384,49 @@ def main():
 
     print(f"Applied {len(overrides)} override(s): {added} new, {modified} modified")
 
-    output_dir = os.path.join(SCRIPT_DIR, config.OUTPUT_DIR)
-    dbc_out = os.path.join(output_dir, "DBFilesClient", "Spell.dbc")
-    write_dbc(dbc_out, records, string_block)
+    spell_out = os.path.join(output_dir, "DBFilesClient", "Spell.dbc")
+    write_dbc(spell_out, records, string_block)
+    dbc_files.append("Spell.dbc")
 
-    pack_mpq(output_dir)
+    # ── Talent.dbc ─────────────────────────────────────────────
+    base_talent = getattr(config, "BASE_TALENT_DBC_PATH", None)
+    if base_talent and os.path.isfile(base_talent):
+        print("\n--- Talent.dbc ---")
+        talent_records, talent_sb = read_int_dbc(base_talent, TALENT_FIELD_COUNT, TALENT_RECORD_SIZE)
+        talent_overrides = fetch_talent_overrides()
+
+        t_added = 0
+        t_modified = 0
+        for row in talent_overrides:
+            tid = int(row["ID"])
+            values = [int(row.get(col, 0)) for col in TALENT_COLUMNS]
+            if tid in talent_records:
+                t_modified += 1
+            else:
+                t_added += 1
+            talent_records[tid] = values
+
+        print(f"Applied {len(talent_overrides)} override(s): {t_added} new, {t_modified} modified")
+
+        talent_out = os.path.join(output_dir, "DBFilesClient", "Talent.dbc")
+        # Client requires talents sorted by (TabID, TierID, ColumnIndex) — NOT by ID.
+        # Incorrect ordering causes the entire talent tree to disappear.
+        talent_sort_key = lambda v: (v[1], v[2], v[3])  # TabID, TierID, ColumnIndex
+        write_int_dbc(talent_out, talent_records, TALENT_FIELD_COUNT, TALENT_RECORD_SIZE, talent_sb, sort_key=talent_sort_key)
+        dbc_files.append("Talent.dbc")
+    else:
+        if base_talent:
+            print(f"\nWARNING: Base Talent.dbc not found: {base_talent} — skipping talent patching.")
+        # else: BASE_TALENT_DBC_PATH not configured, silently skip
+
+    # ── MPQ Packing ────────────────────────────────────────────
+    print()
+    pack_mpq(output_dir, dbc_files)
 
     print("=" * 60)
     print("Done!")
-    print(f"  DBC: {os.path.abspath(dbc_out)}")
+    for dbc_name in dbc_files:
+        print(f"  DBC: {os.path.abspath(os.path.join(output_dir, 'DBFilesClient', dbc_name))}")
     print(f"  MPQ: {os.path.abspath(os.path.join(output_dir, 'patch-4.mpq'))}")
     print("=" * 60)
 
