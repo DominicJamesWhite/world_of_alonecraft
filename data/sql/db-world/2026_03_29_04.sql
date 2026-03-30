@@ -49,13 +49,9 @@ DELETE FROM `spell_script_names` WHERE (`spell_id`, `ScriptName`) IN (
     (200032,'spell_permafrost_absorb'),
     (200033,'spell_permafrost_absorb'),
     (200034,'spell_permafrost_absorb'),
-    (200037,'spell_ice_lance_heal'),
     -- Paladin
-    (42463,'spell_pal_seal_of_vengeance'),
-    (53739,'spell_pal_seal_of_vengeance'),
     -- Priest
     (-976,'spell_mark_of_penitence'),
-    (-724,'spell_pri_lightwell'),
     (200060,'spell_priest_aura_interaction'),
     (200073,'spell_divine_aegis_crit_tracker'),
     (200074,'spell_divine_aegis_crit_tracker'),
@@ -113,13 +109,9 @@ INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
     (200032,'spell_permafrost_absorb'),             -- Permafrost absorb R1
     (200033,'spell_permafrost_absorb'),             -- Permafrost absorb R2
     (200034,'spell_permafrost_absorb'),             -- Permafrost absorb R3
-    (200037,'spell_ice_lance_heal'),                -- Ice Lance heal trigger
     -- Paladin
-    (42463,'spell_pal_seal_of_vengeance'),          -- Seal of Vengeance R1
-    (53739,'spell_pal_seal_of_vengeance'),          -- Seal of Vengeance R2
     -- Priest
     (-976,'spell_mark_of_penitence'),               -- Mark of Penitence (all ranks)
-    (-724,'spell_pri_lightwell'),                   -- Lightform (hooks into Lightwell spell family)
     (200060,'spell_priest_aura_interaction'),       -- Lightform aura
     (200073,'spell_divine_aegis_crit_tracker'),     -- Divine Aegis crit tracker R1
     (200074,'spell_divine_aegis_crit_tracker'),     -- Divine Aegis crit tracker R2

@@ -26,11 +26,7 @@ class spell_magic_absorption_absorb_aura : public AuraScript
         if (spellInfo->Id != SPELL_MAGIC_ABSORPTION_ABSORB_R1 && spellInfo->Id != SPELL_MAGIC_ABSORPTION_ABSORB_R2)
             return false;
 
-        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
-            if (spellInfo->Effects[i].ApplyAuraName == SPELL_AURA_SCHOOL_ABSORB)
-                return true;
-
-        return false;
+        return spellInfo->Effects[EFFECT_0].ApplyAuraName == SPELL_AURA_SCHOOL_ABSORB;
     }
 
     static float GetArcaneSpellCritChance(Player* player)
@@ -88,15 +84,8 @@ class spell_magic_absorption_absorb_aura : public AuraScript
 
     void Register() override
     {
-        // Ensure the absorb aura has a very large pool (avoid consuming/removing after first hit)
         DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_0, SPELL_AURA_SCHOOL_ABSORB);
-        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_1, SPELL_AURA_SCHOOL_ABSORB);
-        DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_magic_absorption_absorb_aura::CalculateAmount, EFFECT_2, SPELL_AURA_SCHOOL_ABSORB);
-
-        // Hook absorb on any absorb effect index (0..2)
         OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_0);
-        OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_1);
-        OnEffectAbsorb += AuraEffectAbsorbFn(spell_magic_absorption_absorb_aura::Absorb, EFFECT_2);
     }
 };
 

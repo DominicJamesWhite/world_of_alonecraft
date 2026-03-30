@@ -54,7 +54,7 @@ public:
 
     void Register() override
     {
-        OnEffectApply += AuraEffectApplyFn(spell_mage_shattered_barrier_cooldown_reset::OnApply, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        OnEffectApply += AuraEffectApplyFn(spell_mage_shattered_barrier_cooldown_reset::OnApply, EFFECT_1, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
     }
 };
 
