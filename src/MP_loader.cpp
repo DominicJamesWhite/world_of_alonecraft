@@ -49,6 +49,7 @@ void AddSC_dk_will_of_necropolis_parry();
 void AddSC_dk_presence_improvements();
 void AddSC_dk_chillblains();
 void AddSC_dk_hungering_cold_rework();
+void AddSC_dk_epidemic_rework();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -101,4 +102,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_presence_improvements();
     AddSC_dk_chillblains();
     AddSC_dk_hungering_cold_rework();
+    AddSC_dk_epidemic_rework();
 }
