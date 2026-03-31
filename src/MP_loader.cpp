@@ -50,6 +50,9 @@ void AddSC_dk_presence_improvements();
 void AddSC_dk_chillblains();
 void AddSC_dk_hungering_cold_rework();
 void AddSC_dk_epidemic_rework();
+void AddSC_dk_magic_siphon();
+void AddSC_dk_bone_shield_rework();
+void AddSC_dk_grim_prophecy();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -103,4 +106,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_chillblains();
     AddSC_dk_hungering_cold_rework();
     AddSC_dk_epidemic_rework();
+    AddSC_dk_magic_siphon();
+    AddSC_dk_bone_shield_rework();
+    AddSC_dk_grim_prophecy();
 }
