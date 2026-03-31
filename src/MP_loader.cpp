@@ -40,6 +40,7 @@ void AddSC_focused_power();
 void AddSC_martyrdom();
 void AddSC_gnosticism();
 void AddSC_syncretism();
+void AddSC_shadow_affinity();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -83,4 +84,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_martyrdom();
     AddSC_gnosticism();
     AddSC_syncretism();
+    AddSC_shadow_affinity();
 }

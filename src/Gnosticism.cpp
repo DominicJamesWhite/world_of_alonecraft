@@ -12,15 +12,20 @@
 
 enum GnosticismSpells
 {
-    GNOSTICISM_R1 = 14750,
-    GNOSTICISM_R2 = 14772,
+    GNOSTICISM_MANA = 200102,
+    GNOSTICISM_HEAL = 200103,
     // Shadow Word: Death self-damage spell
-    SW_DEATH_SELF = 32409,
+    SW_DEATH_SELF   = 32409,
 };
 
 class spell_gnosticism_proc : public AuraScript
 {
     PrepareAuraScript(spell_gnosticism_proc);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ GNOSTICISM_MANA, GNOSTICISM_HEAL });
+    }
 
     bool CheckProc(ProcEventInfo& eventInfo)
     {
@@ -70,14 +75,11 @@ class spell_gnosticism_proc : public AuraScript
 
         if (schoolMask & SPELL_SCHOOL_MASK_HOLY)
         {
-            uint32 healAmount = static_cast<uint32>(amount);
-            caster->ModifyHealth(amount);
-            HealInfo healInfo(caster, caster, healAmount, GetSpellInfo(), SPELL_SCHOOL_MASK_HOLY);
-            caster->SendHealSpellLog(healInfo);
+            caster->CastCustomSpell(GNOSTICISM_HEAL, SPELLVALUE_BASE_POINT0, amount, caster, true, nullptr, aurEff);
         }
         else if (schoolMask & SPELL_SCHOOL_MASK_SHADOW)
         {
-            caster->EnergizeBySpell(caster, GetSpellInfo()->Id, amount, POWER_MANA);
+            caster->CastCustomSpell(GNOSTICISM_MANA, SPELLVALUE_BASE_POINT0, amount, caster, true, nullptr, aurEff);
         }
     }
 

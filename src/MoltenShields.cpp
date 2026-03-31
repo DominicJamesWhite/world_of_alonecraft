@@ -6,19 +6,19 @@
 
 enum MoltenShieldsSpells
 {
-    SPELL_MOLTEN_SHIELDS_R1 = 11094,
-    SPELL_MOLTEN_SHIELDS_R2 = 13043,
-    SPELL_FIRE_WARD_R1 = 543,
-    SPELL_FIRE_WARD_R2 = 8457,
-    SPELL_FIRE_WARD_R3 = 8458,
-    SPELL_FIRE_WARD_R4 = 10223,
-    SPELL_FIRE_WARD_R5 = 10225,
-    SPELL_FIRE_WARD_R6 = 27128,
+    SPELL_MOLTEN_SHIELDS_R1   = 11094,
+    SPELL_MOLTEN_SHIELDS_R2   = 13043,
+    MOLTEN_SHIELDS_MANA       = 200104,
 };
 
 class spell_mage_molten_shields_fire_ward : public AuraScript
 {
     PrepareAuraScript(spell_mage_molten_shields_fire_ward);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ MOLTEN_SHIELDS_MANA });
+    }
 
     void OnAbsorb(AuraEffect* aurEff, DamageInfo& /*dmgInfo*/, uint32& absorbAmount)
     {
@@ -30,20 +30,14 @@ class spell_mage_molten_shields_fire_ward : public AuraScript
         if (!player)
             return;
 
-        uint32 manaToRestore = 0;
+        int32 manaToRestore = 0;
         if (player->HasAura(SPELL_MOLTEN_SHIELDS_R2))
-        {
-            manaToRestore = absorbAmount;
-        }
+            manaToRestore = static_cast<int32>(absorbAmount);
         else if (player->HasAura(SPELL_MOLTEN_SHIELDS_R1))
-        {
-            manaToRestore = absorbAmount / 2;
-        }
+            manaToRestore = static_cast<int32>(absorbAmount / 2);
 
         if (manaToRestore > 0)
-        {
-            player->EnergizeBySpell(player, GetSpellInfo()->Id, manaToRestore, POWER_MANA);
-        }
+            player->CastCustomSpell(MOLTEN_SHIELDS_MANA, SPELLVALUE_BASE_POINT0, manaToRestore, player, true, nullptr, aurEff);
     }
 
     void Register() override
