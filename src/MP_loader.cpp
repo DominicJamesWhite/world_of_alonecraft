@@ -41,6 +41,12 @@ void AddSC_martyrdom();
 void AddSC_gnosticism();
 void AddSC_syncretism();
 void AddSC_shadow_affinity();
+void AddSC_dk_runic_power_mastery();
+void AddSC_dk_improved_rune_tap();
+void AddSC_dk_bloody_lesions();
+void AddSC_dk_mark_of_blood_rework();
+void AddSC_dk_will_of_necropolis_parry();
+void AddSC_dk_presence_improvements();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -85,4 +91,10 @@ void Addworld_of_alonecraftScripts()
     AddSC_gnosticism();
     AddSC_syncretism();
     AddSC_shadow_affinity();
+    AddSC_dk_runic_power_mastery();
+    AddSC_dk_improved_rune_tap();
+    AddSC_dk_bloody_lesions();
+    AddSC_dk_mark_of_blood_rework();
+    AddSC_dk_will_of_necropolis_parry();
+    AddSC_dk_presence_improvements();
 }
