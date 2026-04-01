@@ -16,10 +16,12 @@ enum BloodyLesionsSpells
     BLEED_DOT          = 200107,
 };
 
-// Disease IDs: Blood Plague, Frost Fever, Crypt Fever, Ebon Plague
+// Disease IDs: Blood Plague, Frost Fever, Crypt Fever (R1-R3), Ebon Plague (R1-R3)
 static void RefreshDKDiseases(Unit* target, ObjectGuid casterGuid)
 {
-    for (uint32 id : {55078u, 55095u, 50508u, 51726u})
+    for (uint32 id : {55078u, 55095u,
+                      50508u, 50509u, 50510u,
+                      51726u, 51734u, 51735u})
         if (Aura* aura = target->GetAura(id, casterGuid))
             aura->RefreshTimersWithMods();
 }
