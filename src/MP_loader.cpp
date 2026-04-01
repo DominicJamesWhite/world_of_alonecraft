@@ -58,6 +58,7 @@ void AddSC_dk_harvest_of_souls();
 void AddSC_dk_master_of_ghouls_rework();
 void AddSC_dk_hungry_dead();
 void AddSC_dk_reanimated_sorceror();
+void AddSC_dk_desecration_rework();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -119,4 +120,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_master_of_ghouls_rework();
     AddSC_dk_hungry_dead();
     AddSC_dk_reanimated_sorceror();
+    AddSC_dk_desecration_rework();
 }
