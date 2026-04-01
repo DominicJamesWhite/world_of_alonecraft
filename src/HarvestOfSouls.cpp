@@ -6,7 +6,6 @@
 #include "Unit.h"
 #include "CellImpl.h"
 #include "GridNotifiers.h"
-#include "Log.h"
 
 // Harvest of Souls (renamed On a Pale Horse, talent 2039)
 // Death Strike applies a life-draining magic debuff to nearby diseased enemies.
@@ -42,30 +41,20 @@ class spell_dk_harvest_of_souls_SpellScript : public SpellScript
 
     void HandleAfterHit()
     {
-        LOG_ERROR("spell.scripts", "HarvestOfSouls: HandleAfterHit called, _executed={}", _executed);
-
         if (_executed)
             return;
 
         Unit* caster = GetCaster();
         Unit* hitUnit = GetHitUnit();
-        LOG_ERROR("spell.scripts", "HarvestOfSouls: caster={}, hitUnit={}", caster ? "yes" : "null", hitUnit ? "yes" : "null");
-
         if (!caster || !hitUnit)
             return;
 
         // Determine talent rank and chance from passive aura base points
         int32 chance = 0;
-        bool hasR2 = caster->HasAura(HARVEST_PASSIVE_R2);
-        bool hasR1 = caster->HasAura(HARVEST_PASSIVE_R1);
-        LOG_ERROR("spell.scripts", "HarvestOfSouls: hasR1={}, hasR2={}", hasR1, hasR2);
-
         if (AuraEffect const* eff = caster->GetAuraEffect(HARVEST_PASSIVE_R2, EFFECT_0))
             chance = eff->GetAmount() + 1;  // basepoints=99 -> 100%
         else if (AuraEffect const* eff = caster->GetAuraEffect(HARVEST_PASSIVE_R1, EFFECT_0))
             chance = eff->GetAmount() + 1;  // basepoints=49 -> 50%
-
-        LOG_ERROR("spell.scripts", "HarvestOfSouls: chance={}", chance);
 
         if (chance <= 0)
             return;
@@ -73,18 +62,13 @@ class spell_dk_harvest_of_souls_SpellScript : public SpellScript
         _executed = true;
 
         if (!roll_chance_i(chance))
-        {
-            LOG_ERROR("spell.scripts", "HarvestOfSouls: chance roll failed");
             return;
-        }
 
         // Find enemies within 15yd of caster that have diseases from this caster
         std::list<Unit*> enemies;
         Acore::AnyUnfriendlyUnitInObjectRangeCheck check(caster, caster, HARVEST_RANGE);
         Acore::UnitListSearcher<Acore::AnyUnfriendlyUnitInObjectRangeCheck> searcher(caster, enemies, check);
         Cell::VisitObjects(caster, searcher, HARVEST_RANGE);
-
-        LOG_ERROR("spell.scripts", "HarvestOfSouls: found {} enemies in {}yd range", enemies.size(), HARVEST_RANGE);
 
         for (Unit* enemy : enemies)
         {
@@ -95,14 +79,9 @@ class spell_dk_harvest_of_souls_SpellScript : public SpellScript
                 continue;
 
             uint32 diseases = enemy->GetDiseasesByCaster(caster->GetGUID());
-            LOG_ERROR("spell.scripts", "HarvestOfSouls: enemy {} has {} diseases",
-                enemy->GetName(), diseases);
-
-            // Only apply to enemies that already have diseases from this caster
             if (diseases == 0)
                 continue;
 
-            LOG_ERROR("spell.scripts", "HarvestOfSouls: casting {} on {}", HARVEST_DISEASE, enemy->GetName());
             caster->CastSpell(enemy, HARVEST_DISEASE, true);
         }
     }
