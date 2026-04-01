@@ -54,6 +54,7 @@ void AddSC_dk_magic_siphon();
 void AddSC_dk_bone_shield_rework();
 void AddSC_dk_grim_prophecy();
 void AddSC_dk_crypt_fever_ebon_plague();
+void AddSC_dk_harvest_of_souls();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -111,4 +112,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_bone_shield_rework();
     AddSC_dk_grim_prophecy();
     AddSC_dk_crypt_fever_ebon_plague();
+    AddSC_dk_harvest_of_souls();
 }
