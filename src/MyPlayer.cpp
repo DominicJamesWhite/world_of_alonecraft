@@ -12,6 +12,21 @@ enum MyPlayerAcoreString
     HELLO_WORLD = 35410
 };
 
+// Class potion spell IDs (200200-200208), indexed by class ID (1-9)
+static const uint32 ClassPotionSpells[] =
+{
+    0,      // 0: unused
+    200200, // 1: Warrior  - Warrior's Resolve
+    200201, // 2: Paladin  - Light's Restoration
+    200202, // 3: Hunter   - Survivalist's Brew
+    200203, // 4: Rogue    - Shadow Draught
+    200204, // 5: Priest   - Sacred Renewal
+    200205, // 6: DK       - Blood of the Fallen
+    200206, // 7: Shaman   - Elemental Surge
+    200207, // 8: Mage     - Arcane Infusion
+    200208, // 9: Warlock  - Fel Restoration
+};
+
 // Add player scripts
 class MyPlayer : public PlayerScript
 {
@@ -22,6 +37,15 @@ public:
     {
         if (sConfigMgr->GetOption<bool>("MyModule.Enable", false))
             ChatHandler(player->GetSession()).PSendSysMessage(HELLO_WORLD);
+
+        // Teach class-specific Diablo-style potion spell
+        uint8 playerClass = player->getClass();
+        if (playerClass >= 1 && playerClass <= 9)
+        {
+            uint32 spellId = ClassPotionSpells[playerClass];
+            if (spellId && !player->HasSpell(spellId))
+                player->learnSpell(spellId);
+        }
     }
 };
 

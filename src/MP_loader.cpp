@@ -59,6 +59,14 @@ void AddSC_dk_master_of_ghouls_rework();
 void AddSC_dk_hungry_dead();
 void AddSC_dk_reanimated_sorceror();
 void AddSC_dk_desecration_rework();
+void AddSC_sha_focused_mind();
+void AddSC_sha_ancestral_awakening_crit();
+void AddSC_sha_purification();
+void AddSC_sha_healing_focus();
+void AddSC_sha_defence_of_nature();
+void AddSC_sha_spiritsurge();
+void AddSC_sha_tidal_waves();
+void AddSC_sha_riptide_rework();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -121,4 +129,12 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_hungry_dead();
     AddSC_dk_reanimated_sorceror();
     AddSC_dk_desecration_rework();
+    AddSC_sha_focused_mind();
+    AddSC_sha_ancestral_awakening_crit();
+    AddSC_sha_purification();
+    AddSC_sha_healing_focus();
+    AddSC_sha_defence_of_nature();
+    AddSC_sha_spiritsurge();
+    AddSC_sha_tidal_waves();
+    AddSC_sha_riptide_rework();
 }
