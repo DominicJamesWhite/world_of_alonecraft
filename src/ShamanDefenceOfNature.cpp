@@ -3,7 +3,6 @@
 #include "SpellScript.h"
 #include "SpellAuraEffects.h"
 #include "SpellScriptLoader.h"
-#include "Log.h"
 
 // Defence of Nature (redesigned) — Shaman Restoration talent
 // Ranks: 16184 / 16209 (passive SPELL_AURA_DUMMY, BP = 25/50)
@@ -35,14 +34,9 @@ class spell_sha_defence_of_nature_trigger : public SpellScript
 
     void HandleAfterHit()
     {
-        LOG_ERROR("spells.scripts", "DefenceOfNature: HandleAfterHit fired for spell {}", GetSpellInfo()->Id);
-
         Unit* caster = GetCaster();
         if (!caster)
-        {
-            LOG_ERROR("spells.scripts", "DefenceOfNature: no caster");
             return;
-        }
 
         int32 chance = 0;
         if (AuraEffect const* eff = caster->GetAuraEffect(DEFENCE_OF_NATURE_R2, EFFECT_0))
@@ -50,18 +44,12 @@ class spell_sha_defence_of_nature_trigger : public SpellScript
         else if (AuraEffect const* eff = caster->GetAuraEffect(DEFENCE_OF_NATURE_R1, EFFECT_0))
             chance = eff->GetAmount();
 
-        LOG_ERROR("spells.scripts", "DefenceOfNature: chance = {}", chance);
-
         if (chance <= 0)
             return;
 
         if (!roll_chance_i(chance))
-        {
-            LOG_ERROR("spells.scripts", "DefenceOfNature: roll failed");
             return;
-        }
 
-        LOG_ERROR("spells.scripts", "DefenceOfNature: casting AoE 200214");
         caster->CastSpell(caster, NATURE_AOE_DAMAGE, true);
     }
 

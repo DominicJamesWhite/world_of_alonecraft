@@ -108,6 +108,10 @@ class spell_sha_spiritsurge_flame : public SpellScript
 
     void HandleAfterCast()
     {
+        // Spread casts are triggered — only the original cast should spread
+        if (GetSpell()->IsTriggered())
+            return;
+
         Unit* caster = GetCaster();
         Unit* target = GetExplTargetUnit();
         if (!caster || !target || !caster->HasAura(SPIRITSURGE_BUFF))
@@ -126,11 +130,6 @@ class spell_sha_spiritsurge_flame : public SpellScript
                 continue;
 
             if (!caster->IsValidAttackTarget(enemy))
-                continue;
-
-            // Skip if enemy already has Flame Shock from this caster
-            if (enemy->GetAuraEffect(SPELL_AURA_PERIODIC_DAMAGE, SPELLFAMILY_SHAMAN,
-                0x10000000, 0, 0, caster->GetGUID()))
                 continue;
 
             caster->CastSpell(enemy, flameShockId, true);

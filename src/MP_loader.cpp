@@ -67,6 +67,9 @@ void AddSC_sha_defence_of_nature();
 void AddSC_sha_spiritsurge();
 void AddSC_sha_tidal_waves();
 void AddSC_sha_riptide_rework();
+void AddSC_sha_healing_way();
+void AddSC_sha_natures_guardian();
+void AddSC_natures_guardian_pets();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -137,4 +140,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_sha_spiritsurge();
     AddSC_sha_tidal_waves();
     AddSC_sha_riptide_rework();
+    AddSC_sha_healing_way();
+    AddSC_sha_natures_guardian();
+    AddSC_natures_guardian_pets();
 }
