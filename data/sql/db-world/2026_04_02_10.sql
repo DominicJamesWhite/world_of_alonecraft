@@ -18,6 +18,9 @@ UPDATE `creature_template` SET `minlevel` = 1, `maxlevel` = 80,
 UPDATE `creature_template` SET `minlevel` = 1, `maxlevel` = 80,
     `unit_class` = 2, `ScriptName` = 'npc_natures_guardian_air' WHERE `entry` = 200003;
 
+-- Remove core spell_sha_nature_guardian script (expects old PROC_TRIGGER_SPELL aura)
+DELETE FROM `spell_script_names` WHERE `ScriptName` = 'spell_sha_nature_guardian';
+
 -- Nature's Guardian talent: set rank-specific BasePoints and spellpower description
 -- DieSides1=1 so $s1 = BasePoints+1 (single value, no range display)
 -- BasePoints1 = N-1 so tooltip $s1 displays N

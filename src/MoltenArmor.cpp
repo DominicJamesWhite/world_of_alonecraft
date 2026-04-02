@@ -162,16 +162,6 @@ static void RemoveEmberScarsStackFromPlayer(Player* player)
 }
 
 /*
- * Legacy PlayerScript kept for compatibility but no longer performs its own crit roll.
- * Crit-triggering should be done by a dedicated aura (ID 200040) applied when a real crit happens.
- */
-class spell_molten_armor_spell_cast_handler : public PlayerScript
-{
-public:
-    spell_molten_armor_spell_cast_handler() : PlayerScript("spell_molten_armor_spell_cast_handler") { }
-};
-
-/*
  * Listener for the crit-trigger aura (spell ID 200040).
  * When this aura is applied to a player (applied by your external proc on real crit),
  * remove the correct amount of Ember Scars stacks and then remove the trigger aura itself.
@@ -324,7 +314,6 @@ class spell_ember_scars_loader : public SpellScriptLoader
 void AddSC_molten_armor_mechanic()
 {
     new spell_molten_armor_damage_handler();
-    new spell_molten_armor_spell_cast_handler();
     new spell_molten_armor_crit_aura_loader();
     new spell_molten_armor_apply_loader();
     new spell_ember_scars_loader();

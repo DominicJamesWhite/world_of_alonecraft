@@ -1,40 +1,71 @@
 #include "ScriptMgr.h"
 #include "Player.h"
-#include "Spell.h"
+#include "SpellScript.h"
 #include "SpellScriptLoader.h"
 #include "Log.h"
 
 // Glacier Armor: If player casts Ice Block (45438) while aura 11189 or 28332 is active,
 // cast Healing Floes (200039) on the player.
-class spell_glacier_armor_player_handler : public PlayerScript
+// Registered on Ice Block (45438) via spell_script_names.
+
+enum GlacierArmorSpells
 {
-public:
-    spell_glacier_armor_player_handler() : PlayerScript("spell_glacier_armor_player_handler") { }
+    GLACIER_ARMOR_R1 = 11189,
+    GLACIER_ARMOR_R2 = 28332,
+    HEALING_FLOES    = 200039,
+};
 
-    void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+class spell_glacier_armor_ice_block : public SpellScript
+{
+    PrepareSpellScript(spell_glacier_armor_ice_block);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        if (!player || !spell)
+        return ValidateSpellInfo({ HEALING_FLOES });
+    }
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+        {
+            LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - no caster");
+            return;
+        }
+
+        Player* player = caster->ToPlayer();
+        if (!player)
             return;
 
-        SpellInfo const* spellInfo = spell->GetSpellInfo();
-        if (!spellInfo)
+        if (!(player->HasAura(GLACIER_ARMOR_R1) || player->HasAura(GLACIER_ARMOR_R2)))
+        {
+            LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - player {} cast Ice Block but has no Glacier Armor aura",
+                     player->GetName());
             return;
+        }
 
-        // Ice Block cast (spell id 45438)
-        if (spellInfo->Id != 45438)
-            return;
+        LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - casting Healing Floes on player {}", player->GetName());
+        player->CastSpell(player, HEALING_FLOES, true);
+    }
 
-        // Glacier Armor ranks (11189, 28332)
-        if (!(player->HasAura(11189) || player->HasAura(28332)))
-            return;
-
-        // Cast Healing Floes (200039) on the player
-        player->CastSpell(player, 200039, true);
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_glacier_armor_ice_block::HandleAfterCast);
     }
 };
 
-// Registration helper
+class spell_glacier_armor_ice_block_loader : public SpellScriptLoader
+{
+public:
+    spell_glacier_armor_ice_block_loader() : SpellScriptLoader("spell_glacier_armor_ice_block") { }
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_glacier_armor_ice_block();
+    }
+};
+
 void AddSC_glacier_armor()
 {
-    new spell_glacier_armor_player_handler();
+    new spell_glacier_armor_ice_block_loader();
 }

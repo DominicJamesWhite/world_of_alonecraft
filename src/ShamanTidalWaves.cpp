@@ -4,75 +4,96 @@
 #include "SpellAuraEffects.h"
 #include "SpellScriptLoader.h"
 #include "Unit.h"
+#include "Log.h"
 
 // Tidal Waves (redesigned) — Shaman Restoration talent
 // Ranks: 51562 / 51563 / 51564 / 51565 / 51566
-// Effect1: passive spellpower (handled by DBC aura)
-// Effect2: SPELL_AURA_DUMMY storing heal crit % (5/10/15/20/25 per rank)
+// Effect1 (idx 0): passive spellpower (handled by DBC aura)
+// Effect2 (idx 1): SPELL_AURA_DUMMY storing heal crit % (5/10/15/20/25)
 //
-// Mechanic:
-//   When Lightning Bolt (family 0x01), Chain Lightning (0x02), or
-//   Lava Burst (family1 0x1000) is cast, apply heal crit buff 200220
-//   with the value from the talent's Effect2 BasePoints.
-//   200220 is SPELL_AURA_MOD_SPELL_CRIT_CHANCE, 15s duration, 1 charge.
+// When Lightning Bolt, Chain Lightning, or Lava Burst is cast,
+// apply heal crit buff 200220 with the value from the talent's Effect2.
+//
+// Implementation: SpellScript registered on LB/CL/Lava Burst via spell_script_names.
+// AfterCast checks for talent aura, reads crit bonus, casts buff.
 
 enum TidalWavesSpells
 {
-    TIDAL_WAVES_R1     = 51562,
-    TIDAL_WAVES_R2     = 51563,
-    TIDAL_WAVES_R3     = 51564,
-    TIDAL_WAVES_R4     = 51565,
-    TIDAL_WAVES_R5     = 51566,
-    TIDAL_WAVES_BUFF   = 200220,
+    TIDAL_WAVES_R1   = 51562,
+    TIDAL_WAVES_R2   = 51563,
+    TIDAL_WAVES_R3   = 51564,
+    TIDAL_WAVES_R4   = 51565,
+    TIDAL_WAVES_R5   = 51566,
+    TIDAL_WAVES_BUFF = 200220,
 };
 
-// LB=0x01, CL=0x02
-static constexpr uint32 LB_CL_MASK = 0x03;
-// Lava Burst family flags[1] = 0x1000
-static constexpr uint32 LAVA_BURST_MASK1 = 0x1000;
+static constexpr uint32 TIDAL_WAVES_RANKS[] = {
+    TIDAL_WAVES_R5, TIDAL_WAVES_R4, TIDAL_WAVES_R3, TIDAL_WAVES_R2, TIDAL_WAVES_R1
+};
 
-class sha_tidal_waves_handler : public PlayerScript
+class spell_sha_tidal_waves_trigger : public SpellScript
 {
-public:
-    sha_tidal_waves_handler() : PlayerScript("sha_tidal_waves_handler") { }
+    PrepareSpellScript(spell_sha_tidal_waves_trigger);
 
-    void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+    bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        SpellInfo const* spellInfo = spell->GetSpellInfo();
-        if (!spellInfo)
+        return ValidateSpellInfo({ TIDAL_WAVES_BUFF });
+    }
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+        {
+            LOG_ERROR("scripts", "TidalWaves::HandleAfterCast - no caster");
+            return;
+        }
+
+        Player* player = caster->ToPlayer();
+        if (!player)
             return;
 
-        if (spellInfo->SpellFamilyName != SPELLFAMILY_SHAMAN)
-            return;
-
-        // Check for LB/CL (flags[0]) or Lava Burst (flags[1])
-        bool isLbCl = (spellInfo->SpellFamilyFlags[0] & LB_CL_MASK) != 0;
-        bool isLavaBurst = (spellInfo->SpellFamilyFlags[1] & LAVA_BURST_MASK1) != 0;
-
-        if (!isLbCl && !isLavaBurst)
-            return;
-
-        // Find which rank of Tidal Waves the player has (check highest first)
+        // Find highest rank of Tidal Waves talent (check highest first)
         int32 critBonus = 0;
-        if (AuraEffect const* eff = player->GetAuraEffect(TIDAL_WAVES_R5, EFFECT_1))
-            critBonus = eff->GetAmount();
-        else if (AuraEffect const* eff = player->GetAuraEffect(TIDAL_WAVES_R4, EFFECT_1))
-            critBonus = eff->GetAmount();
-        else if (AuraEffect const* eff = player->GetAuraEffect(TIDAL_WAVES_R3, EFFECT_1))
-            critBonus = eff->GetAmount();
-        else if (AuraEffect const* eff = player->GetAuraEffect(TIDAL_WAVES_R2, EFFECT_1))
-            critBonus = eff->GetAmount();
-        else if (AuraEffect const* eff = player->GetAuraEffect(TIDAL_WAVES_R1, EFFECT_1))
-            critBonus = eff->GetAmount();
+        for (uint32 rankId : TIDAL_WAVES_RANKS)
+        {
+            if (AuraEffect const* eff = player->GetAuraEffect(rankId, EFFECT_1))
+            {
+                critBonus = eff->GetAmount();
+                break;
+            }
+        }
 
         if (critBonus <= 0)
             return;
 
+        SpellInfo const* spellInfo = GetSpellInfo();
+        LOG_ERROR("scripts", "TidalWaves::HandleAfterCast - casting buff (crit +{}) on player {} after {} ({})",
+                 critBonus, player->GetName(),
+                 spellInfo ? spellInfo->SpellName[0] : "unknown",
+                 spellInfo ? spellInfo->Id : 0);
+
         player->CastCustomSpell(TIDAL_WAVES_BUFF, SPELLVALUE_BASE_POINT0, critBonus, player, true);
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_sha_tidal_waves_trigger::HandleAfterCast);
+    }
+};
+
+class spell_sha_tidal_waves_trigger_loader : public SpellScriptLoader
+{
+public:
+    spell_sha_tidal_waves_trigger_loader() : SpellScriptLoader("spell_sha_tidal_waves_trigger") { }
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_sha_tidal_waves_trigger();
     }
 };
 
 void AddSC_sha_tidal_waves()
 {
-    new sha_tidal_waves_handler();
+    new spell_sha_tidal_waves_trigger_loader();
 }

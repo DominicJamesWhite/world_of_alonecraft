@@ -85,27 +85,31 @@ public:
         SetHitDamage(GetHitDamage() + extraDamage);
     }
 
-    void Register() override
+    // Remove one Ember Scars stack when Fire Blast lands (replaces PlayerScript)
+    void HandleAfterCast()
     {
-        OnEffectHitTarget += SpellEffectFn(spell_firebreak_damage_booster::OnDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
-    }
-};
+        Unit* caster = GetCaster();
+        if (!caster)
+        {
+            LOG_ERROR("scripts", "Firebreak::HandleAfterCast - no caster");
+            return;
+        }
 
-class spell_firebreak_spell_cast_handler : public PlayerScript
-{
-public:
-    spell_firebreak_spell_cast_handler() : PlayerScript("spell_firebreak_spell_cast_handler") { }
+        Player* player = caster->ToPlayer();
+        if (!player)
+            return;
 
-    void OnPlayerSpellCast(Player* player, Spell* spell, bool skipCheck) override
-    {
         if (!(player->HasAura(FIREBREAK_AURA_R1) || player->HasAura(FIREBREAK_AURA_R2) || player->HasAura(FIREBREAK_AURA_R3)))
             return;
 
-        SpellInfo const* spellInfo = spell->GetSpellInfo();
-        if (spellInfo->SpellFamilyName == SPELLFAMILY_MAGE && spellInfo->SpellFamilyFlags[0] & 0x00000002)
-        {
-            RemoveEmberScarsStack(player, 1);
-        }
+        LOG_ERROR("scripts", "Firebreak::HandleAfterCast - removing Ember Scars stack for player {}", player->GetName());
+        RemoveEmberScarsStack(player, 1);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_firebreak_damage_booster::OnDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+        AfterCast += SpellCastFn(spell_firebreak_damage_booster::HandleAfterCast);
     }
 };
 
@@ -123,5 +127,4 @@ class spell_firebreak_loader : public SpellScriptLoader
 void AddSC_firebreak_mechanic()
 {
     new spell_firebreak_loader();
-    new spell_firebreak_spell_cast_handler();
 }
