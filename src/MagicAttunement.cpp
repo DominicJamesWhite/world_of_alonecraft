@@ -47,7 +47,7 @@ class spell_magic_attunement_proc : public AuraScript
         Spell const* procSpell = eventInfo.GetProcSpell();
         if (!procSpell)
         {
-            LOG_ERROR("scripts", "MagicAttunement::CheckProc - no proc spell for player {}",
+            LOG_DEBUG("scripts", "MagicAttunement::CheckProc - no proc spell for player {}",
                      actor->ToPlayer()->GetName());
             return false;
         }
@@ -68,14 +68,14 @@ class spell_magic_attunement_proc : public AuraScript
         Player* player = eventInfo.GetActor()->ToPlayer();
         if (!player)
         {
-            LOG_ERROR("scripts", "MagicAttunement::HandleProc - actor is not a player");
+            LOG_DEBUG("scripts", "MagicAttunement::HandleProc - actor is not a player");
             return;
         }
 
         Spell const* procSpell = eventInfo.GetProcSpell();
         if (!procSpell)
         {
-            LOG_ERROR("scripts", "MagicAttunement::HandleProc - no proc spell for player {}",
+            LOG_DEBUG("scripts", "MagicAttunement::HandleProc - no proc spell for player {}",
                      player->GetName());
             return;
         }
@@ -86,14 +86,12 @@ class spell_magic_attunement_proc : public AuraScript
 
         if (manaReturn <= 0)
         {
-            LOG_ERROR("scripts", "MagicAttunement::HandleProc - manaReturn {} <= 0 (cost={}, pct={}) for player {}",
+            LOG_DEBUG("scripts", "MagicAttunement::HandleProc - manaReturn {} <= 0 (cost={}, pct={}) for player {}",
                      manaReturn, manaCost, manaReturnPct, player->GetName());
             return;
         }
 
         player->ModifyPower(POWER_MANA, manaReturn);
-        LOG_ERROR("scripts", "MagicAttunement::HandleProc - returned {} mana ({}% of {} cost) to player {}",
-                 manaReturn, manaReturnPct, manaCost, player->GetName());
     }
 
     void Register() override

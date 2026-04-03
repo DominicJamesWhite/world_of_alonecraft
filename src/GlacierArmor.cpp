@@ -29,7 +29,7 @@ class spell_glacier_armor_ice_block : public SpellScript
         Unit* caster = GetCaster();
         if (!caster)
         {
-            LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - no caster");
+            LOG_DEBUG("scripts", "GlacierArmor::HandleAfterCast - no caster");
             return;
         }
 
@@ -39,12 +39,9 @@ class spell_glacier_armor_ice_block : public SpellScript
 
         if (!(player->HasAura(GLACIER_ARMOR_R1) || player->HasAura(GLACIER_ARMOR_R2)))
         {
-            LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - player {} cast Ice Block but has no Glacier Armor aura",
-                     player->GetName());
             return;
         }
 
-        LOG_ERROR("scripts", "GlacierArmor::HandleAfterCast - casting Healing Floes on player {}", player->GetName());
         player->CastSpell(player, HEALING_FLOES, true);
     }
 

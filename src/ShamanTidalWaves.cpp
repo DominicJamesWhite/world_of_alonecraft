@@ -45,7 +45,7 @@ class spell_sha_tidal_waves_trigger : public SpellScript
         Unit* caster = GetCaster();
         if (!caster)
         {
-            LOG_ERROR("scripts", "TidalWaves::HandleAfterCast - no caster");
+            LOG_DEBUG("scripts", "TidalWaves::HandleAfterCast - no caster");
             return;
         }
 
@@ -66,12 +66,6 @@ class spell_sha_tidal_waves_trigger : public SpellScript
 
         if (critBonus <= 0)
             return;
-
-        SpellInfo const* spellInfo = GetSpellInfo();
-        LOG_ERROR("scripts", "TidalWaves::HandleAfterCast - casting buff (crit +{}) on player {} after {} ({})",
-                 critBonus, player->GetName(),
-                 spellInfo ? spellInfo->SpellName[0] : "unknown",
-                 spellInfo ? spellInfo->Id : 0);
 
         player->CastCustomSpell(TIDAL_WAVES_BUFF, SPELLVALUE_BASE_POINT0, critBonus, player, true);
     }

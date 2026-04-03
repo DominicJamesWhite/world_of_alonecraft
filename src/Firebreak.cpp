@@ -91,7 +91,7 @@ public:
         Unit* caster = GetCaster();
         if (!caster)
         {
-            LOG_ERROR("scripts", "Firebreak::HandleAfterCast - no caster");
+            LOG_DEBUG("scripts", "Firebreak::HandleAfterCast - no caster");
             return;
         }
 
@@ -102,7 +102,6 @@ public:
         if (!(player->HasAura(FIREBREAK_AURA_R1) || player->HasAura(FIREBREAK_AURA_R2) || player->HasAura(FIREBREAK_AURA_R3)))
             return;
 
-        LOG_ERROR("scripts", "Firebreak::HandleAfterCast - removing Ember Scars stack for player {}", player->GetName());
         RemoveEmberScarsStack(player, 1);
     }
 
