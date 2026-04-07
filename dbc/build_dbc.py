@@ -291,6 +291,32 @@ def main():
             print(f"\nWARNING: Base Talent.dbc not found: {base_talent} — skipping talent patching.")
         # else: BASE_TALENT_DBC_PATH not configured, silently skip
 
+    # ── SpellShapeshiftForm.dbc ────────────────────────────────
+    base_shapeshift = getattr(config, "BASE_SHAPESHIFT_DBC_PATH", None)
+    if base_shapeshift and os.path.isfile(base_shapeshift):
+        print("\n--- SpellShapeshiftForm.dbc ---")
+        SSF_FIELD_COUNT = 35
+        SSF_RECORD_SIZE = SSF_FIELD_COUNT * 4  # 140 bytes
+        ssf_records, ssf_sb = read_int_dbc(base_shapeshift, SSF_FIELD_COUNT, SSF_RECORD_SIZE)
+
+        # Patch form 23 (Lightform): set flags to STANCE | CAN_NPC_INTERACT | DONT_AUTO_UNSHIFT
+        LIGHTFORM_FORM_ID = 23
+        LIGHTFORM_FLAGS = 0x109  # STANCE(0x01) | CAN_NPC_INTERACT(0x08) | DONT_AUTO_UNSHIFT(0x100)
+        FLAGS_FIELD_INDEX = 19
+        if LIGHTFORM_FORM_ID in ssf_records:
+            old_flags = ssf_records[LIGHTFORM_FORM_ID][FLAGS_FIELD_INDEX]
+            ssf_records[LIGHTFORM_FORM_ID][FLAGS_FIELD_INDEX] = LIGHTFORM_FLAGS
+            print(f"Patched form {LIGHTFORM_FORM_ID}: flags {old_flags:#x} -> {LIGHTFORM_FLAGS:#x}")
+        else:
+            print(f"WARNING: Form {LIGHTFORM_FORM_ID} not found in SpellShapeshiftForm.dbc")
+
+        ssf_out = os.path.join(output_dir, "DBFilesClient", "SpellShapeshiftForm.dbc")
+        write_int_dbc(ssf_out, ssf_records, SSF_FIELD_COUNT, SSF_RECORD_SIZE, ssf_sb)
+        dbc_files.append("SpellShapeshiftForm.dbc")
+    else:
+        if base_shapeshift:
+            print(f"\nWARNING: Base SpellShapeshiftForm.dbc not found: {base_shapeshift} — skipping.")
+
     # ── MPQ Packing ────────────────────────────────────────────
     print()
     pack_mpq(output_dir, dbc_files)

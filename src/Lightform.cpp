@@ -14,6 +14,7 @@
  * AuraScript for the main priest aura (200060).
  * When this aura is applied, it automatically applies the two linked auras (200061 and 200062).
  * When this aura is removed, it removes the linked auras as well.
+ * Lightform is cancelled when the priest casts a non-Holy spell (via OnProc).
  */
 class spell_priest_aura_interaction_AuraScript : public AuraScript
 {
@@ -68,10 +69,28 @@ class spell_priest_aura_interaction_AuraScript : public AuraScript
             player->RemoveAura(LIGHTFORM_BONUS_2);
     }
 
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        SpellInfo const* spellInfo = eventInfo.GetSpellInfo();
+        if (!spellInfo)
+            return false;
+
+        // Only proc (cancel Lightform) if the cast spell has NO Holy component
+        return !(spellInfo->SchoolMask & SPELL_SCHOOL_MASK_HOLY);
+    }
+
+    void HandleProc(ProcEventInfo& /*eventInfo*/)
+    {
+        PreventDefaultAction();
+        GetTarget()->RemoveAura(LIGHTFORM);
+    }
+
     void Register() override
     {
         AfterEffectApply += AuraEffectApplyFn(spell_priest_aura_interaction_AuraScript::OnApply, EFFECT_ALL, SPELL_AURA_ANY, AURA_EFFECT_HANDLE_REAL);
         AfterEffectRemove += AuraEffectRemoveFn(spell_priest_aura_interaction_AuraScript::OnRemove, EFFECT_ALL, SPELL_AURA_ANY, AURA_EFFECT_HANDLE_REAL);
+        DoCheckProc += AuraCheckProcFn(spell_priest_aura_interaction_AuraScript::CheckProc);
+        OnProc += AuraProcFn(spell_priest_aura_interaction_AuraScript::HandleProc);
     }
 };
 
