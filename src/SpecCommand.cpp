@@ -11,8 +11,10 @@
 
 #include "Chat.h"
 #include "CommandScript.h"
+#include "DBCStores.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "Spell.h"
 
 using namespace Acore::ChatCommands;
 
@@ -51,6 +53,11 @@ public:
     }
 
     // .spec <1-8>
+    // Casts the "Activate Spec" spell (63645) with a cast bar, just like
+    // Blizzard's dual-spec activation: ~5s cast, interrupted by movement,
+    // damage, or entering combat.
+    static constexpr uint32 SPELL_ACTIVATE_SPEC = 63645;
+
     static bool HandleSpecSwitchCommand(ChatHandler* handler, uint8 specNum)
     {
         Player* player = handler->GetSession()->GetPlayer();
@@ -76,9 +83,27 @@ public:
             return true;
         }
 
-        player->ActivateSpec(specIndex);
-        handler->PSendSysMessage("Switched to spec {}.", specNum);
-        SendSpecState(player, handler);
+        if (player->IsInCombat())
+        {
+            handler->PSendSysMessage("Cannot switch specs while in combat.");
+            return true;
+        }
+
+        if (player->IsInFlight())
+        {
+            handler->PSendSysMessage("Cannot switch specs while in flight.");
+            return true;
+        }
+
+        // Cast the spec-activation spell. SPELLVALUE_BASE_POINT0 passes
+        // through CalcBaseValue which subtracts 1 (DieSides != 0), then
+        // CalcValue adds max(1, DieSides) = 1 back, so damage = bp0.
+        // EffectActivateSpec does ActivateSpec(damage - 1), so pass specNum.
+        int32 bp0 = static_cast<int32>(specNum);
+        player->CastCustomSpell(SPELL_ACTIVATE_SPEC, SPELLVALUE_BASE_POINT0, bp0, player, false);
+
+        // Don't SendSpecState here — the cast has a cast bar. The
+        // OnPlayerAfterSpecSlotChanged hook sends it after the switch completes.
         return true;
     }
 
@@ -159,7 +184,78 @@ public:
     }
 };
 
+// ----------------------------------------------------------------
+// PlayerScript: send talent distributions for all specs on login
+// so the MultiSpec addon can show correct icons immediately.
+// Format: "MULTISPEC_TALENTS:spec:p1:p2:p3" per spec.
+// ----------------------------------------------------------------
+static void GetTalentTreePointsForSpec(Player* player, uint8 spec, uint8 (&points)[3])
+{
+    points[0] = points[1] = points[2] = 0;
+    const PlayerTalentMap& talentMap = player->GetTalentMap();
+    for (auto itr = talentMap.begin(); itr != talentMap.end(); ++itr)
+    {
+        if (itr->second->State != PLAYERSPELL_REMOVED && itr->second->IsInSpec(spec))
+        {
+            if (TalentEntry const* talentInfo = sTalentStore.LookupEntry(itr->second->talentID))
+            {
+                if (TalentTabEntry const* tab = sTalentTabStore.LookupEntry(talentInfo->TalentTab))
+                {
+                    if (tab->tabpage < 3)
+                    {
+                        uint8 currentRank = 0;
+                        for (uint8 rank = 0; rank < MAX_TALENT_RANK; ++rank)
+                            if (talentInfo->RankID[rank] && itr->first == talentInfo->RankID[rank])
+                            {
+                                currentRank = rank + 1;
+                                break;
+                            }
+                        points[tab->tabpage] += currentRank;
+                    }
+                }
+            }
+        }
+    }
+}
+
+class multispec_player_script : public PlayerScript
+{
+public:
+    multispec_player_script() : PlayerScript("multispec_player_script") { }
+
+    void OnPlayerAfterSpecSlotChanged(Player* player, uint8 /*newSlot*/) override
+    {
+        ChatHandler handler(player->GetSession());
+        handler.PSendSysMessage("MULTISPEC:{}:{}:{}",
+            player->GetActiveSpec() + 1,
+            player->GetSpecsCount(),
+            player->GetClientPreviewSpec() + 1);
+    }
+
+    void OnPlayerLogin(Player* player) override
+    {
+        ChatHandler handler(player->GetSession());
+
+        // Send overall spec state
+        handler.PSendSysMessage("MULTISPEC:{}:{}:{}",
+            player->GetActiveSpec() + 1,
+            player->GetSpecsCount(),
+            player->GetClientPreviewSpec() + 1);
+
+        // Send talent distribution for each unlocked spec (skip empty specs)
+        for (uint8 i = 0; i < player->GetSpecsCount(); ++i)
+        {
+            uint8 points[3] = {};
+            GetTalentTreePointsForSpec(player, i, points);
+            if (points[0] + points[1] + points[2] > 0)
+                handler.PSendSysMessage("MULTISPEC_TALENTS:{}:{}:{}:{}",
+                    i + 1, points[0], points[1], points[2]);
+        }
+    }
+};
+
 void AddSC_spec_command()
 {
     new spec_commandscript();
+    new multispec_player_script();
 }
