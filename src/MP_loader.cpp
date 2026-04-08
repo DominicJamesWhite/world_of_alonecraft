@@ -78,6 +78,7 @@ void AddSC_sha_riptide_rework();
 void AddSC_sha_healing_way();
 void AddSC_sha_natures_guardian();
 void AddSC_natures_guardian_pets();
+void AddSC_spec_command();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -159,4 +160,5 @@ void Addworld_of_alonecraftScripts()
     AddSC_sha_healing_way();
     AddSC_sha_natures_guardian();
     AddSC_natures_guardian_pets();
+    AddSC_spec_command();
 }
