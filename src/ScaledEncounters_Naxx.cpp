@@ -14,14 +14,18 @@
  *   - Eye Stalk gauntlet     (thinning at low N)
  *
  * Construct Quarter:
- *   - Gluth                 (zombie chow spawn scaling, Decimate damage)
- *   - Thaddius              (polarity shift damage scaling, Magnetic Pull block)
+ *   - Patchwerk             (Hateful Strike damage scaling at low N)
+ *   - Gluth                 (zombie chow spawn scaling, Mortal Wound cap, Decimate damage)
+ *   - Thaddius              (polarity conduits at low N, damage scaling, Magnetic Pull block, Tesla Shock suppress)
  *
  * Military Quarter:
  *   - Death Knight Cavalier  (bone armor scaling at low N)
  *   - Instructor Razuvious  (crystal converts understudies to guardians at low N)
  *   - Gothik the Harvester  (gate open on dead add spawn at low N)
  *   - Four Horsemen         (mark stack cap at low N)
+ *
+ * Frostwyrm Lair:
+ *   - Kel'Thuzad            (guardian thinning + Soul Weaver knockback block at low N)
  */
 
 #include "GameTime.h"
@@ -52,8 +56,18 @@ enum NaxxSpells
     SPELL_POSITIVE_CHARGE       = 28062,
     SPELL_NEGATIVE_CHARGE       = 28085,
     SPELL_MAGNETIC_PULL         = 28337,
+    SPELL_TESLA_SHOCK           = 28099,
+    SPELL_POSITIVE_POLARITY     = 28059,
+    SPELL_NEGATIVE_POLARITY     = 28084,
+    SPELL_POSITIVE_CHARGE_STACK = 29659,
+    SPELL_NEGATIVE_CHARGE_STACK = 29660,
+    // Patchwerk
+    SPELL_HATEFUL_STRIKE        = 41926,
     // Gluth
+    SPELL_MORTAL_WOUND          = 25646,
     SPELL_DECIMATE_DAMAGE       = 28375,
+    // Kel'Thuzad
+    SPELL_WAIL_OF_SOULS         = 28459,
     // Four Horsemen marks
     SPELL_MARK_OF_KORTHAZZ     = 28832,
     SPELL_MARK_OF_BLAUMEUX     = 28833,
@@ -71,11 +85,17 @@ enum NaxxNPCs
     // Plague Quarter
     NPC_EYE_STALK               = 16236,
     // Construct Quarter
+    NPC_THADDIUS                = 15928,
+    NPC_POSITIVE_CONDUIT        = 200008,
+    NPC_NEGATIVE_CONDUIT        = 200009,
     NPC_ZOMBIE_CHOW             = 16360,
     NPC_GLUTH                   = 15932,
     // Military Quarter
     NPC_RAZUVIOUS               = 16061,
     NPC_DEATH_KNIGHT_UNDERSTUDY = 16803,
+    // Kel'Thuzad
+    NPC_GUARDIAN_OF_ICECROWN    = 16441,
+    NPC_SOUL_WEAVER             = 16429,
     // Gothik dead-side adds
     NPC_DEAD_TRAINEE            = 16127,
     NPC_DEAD_KNIGHT             = 16148,
@@ -533,42 +553,6 @@ public:
 // ===========================  Thaddius  ====================================
 
 // ---------------------------------------------------------------------------
-//  #13 — Thaddius: Polarity Shift damage scaling
-//
-//  The polarity charge spells deal damage to nearby players with the
-//  opposite polarity.  With fewer than 5 players the mechanic is
-//  disproportionately punishing because there's almost no way to
-//  spread out.  Scale damage: damage * (N-1) / 4.
-//    N=1 → 0%   N=2 → 25%   N=3 → 50%   N=4 → 75%   N=5 → 100%
-// ---------------------------------------------------------------------------
-
-class ScaledEncounters_ThaddiusPolarity : public UnitScript
-{
-public:
-    ScaledEncounters_ThaddiusPolarity()
-        : UnitScript("ScaledEncounters_ThaddiusPolarity",
-                      /*addToScripts=*/true,
-                      { UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
-    { }
-
-    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& damage, SpellInfo const* spellInfo) override
-    {
-        if (!spellInfo || !target)
-            return;
-
-        if (spellInfo->Id != SPELL_POSITIVE_CHARGE && spellInfo->Id != SPELL_NEGATIVE_CHARGE)
-            return;
-
-        uint32 N = GetGroupSize(target);
-        if (N >= 5)
-            return;
-
-        // damage * (N-1) / 4  — at N=1 this zeroes out the damage entirely
-        damage = damage * static_cast<int32>(N - 1) / 4;
-    }
-};
-
-// ---------------------------------------------------------------------------
 //  Stalagg & Feugen: Magnetic Pull blocker at low N
 //
 //  Magnetic Pull swaps tanks between the two platforms.  With fewer
@@ -603,7 +587,282 @@ public:
     }
 };
 
+// ---------------------------------------------------------------------------
+//  Stalagg & Feugen: Tesla Coil shock suppression at low N
+//
+//  When a minion is pulled >28 yd from its platform the Tesla Coil link
+//  breaks and the coil shocks random players every 1.5s for ~6.5k.  With
+//  Magnetic Pull already blocked at low N this shouldn't happen often,
+//  but a solo player kiting can still trigger it.  Zero the shock damage
+//  at low N so it's non-lethal.
+//    N=1-2 → 0 damage
+//    N=3+  → normal
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_TeslaShock : public UnitScript
+{
+public:
+    ScaledEncounters_TeslaShock()
+        : UnitScript("ScaledEncounters_TeslaShock",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
+    { }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& damage, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || !target || !target->IsPlayer())
+            return;
+
+        if (spellInfo->Id != SPELL_TESLA_SHOCK)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        if (N < 3)
+            damage = 0;
+    }
+};
+
+// ---------------------------------------------------------------------------
+//  Thaddius: Polarity Conduit NPCs at low N
+//
+//  At N≤2, polarity shift is a nothing mechanic — no one to stand next
+//  to.  Spawn two crystal NPCs on Thaddius's left and right:
+//    - Left  = Negative Conduit (always negative polarity)
+//    - Right = Positive Conduit (always positive polarity)
+//  The player must stand near the conduit matching their charge to
+//  avoid damage.
+//
+//  - Conduits spawn when Thaddius enters combat at low N.
+//  - Polarities are fixed (left=negative, right=positive).
+//  - Charge damage is zeroed if the player is near the correct conduit
+//    (within 15 yd), full damage otherwise.
+//  - Conduits despawn when Thaddius dies or resets.
+// ---------------------------------------------------------------------------
+
+// Distance offsets from Thaddius for left/right conduit placement.
+// Thaddius faces ~4.14 rad (roughly south-west).  Place conduits
+// perpendicular to his facing, 12 yd to each side.
+static constexpr float CONDUIT_OFFSET = 12.0f;
+static constexpr float CONDUIT_MATCH_RANGE = 15.0f;
+
+class ScaledEncounters_ThaddiusConduits : public AllCreatureScript
+{
+public:
+    ScaledEncounters_ThaddiusConduits()
+        : AllCreatureScript("ScaledEncounters_ThaddiusConduits")
+    { }
+
+    void OnAllCreatureUpdate(Creature* creature, uint32 diff) override
+    {
+        if (!creature || creature->GetEntry() != NPC_THADDIUS)
+            return;
+
+        Map* map = creature->GetMap();
+        if (!map || !map->IsDungeon())
+            return;
+
+        bool lowN = map->GetPlayersCountExceptGMs() <= 2;
+        bool inCombat = creature->IsInCombat() && creature->IsAlive();
+
+        if (inCombat && lowN && !_spawned)
+        {
+            SpawnConduits(creature);
+            _spawned = true;
+        }
+        else if ((!inCombat || !lowN) && _spawned)
+        {
+            DespawnConduits(map);
+            _spawned = false;
+        }
+
+        // Periodic polarity check — every 3s, reward or punish positioning
+        if (_spawned)
+        {
+            _tickTimer += diff;
+            if (_tickTimer >= 3000)
+            {
+                _tickTimer = 0;
+                PolarityTick(map);
+            }
+        }
+    }
+
+    bool IsSpawned() const { return _spawned; }
+
+private:
+    ObjectGuid _leftGuid;   // Negative Conduit
+    ObjectGuid _rightGuid;  // Positive Conduit
+    bool _spawned{};
+    uint32 _tickTimer{};
+
+    void PolarityTick(Map* map)
+    {
+        Creature* leftNeg  = map->GetCreature(_leftGuid);
+        Creature* rightPos = map->GetCreature(_rightGuid);
+        if (!leftNeg || !rightPos)
+            return;
+
+        int32 chargeDmg = 4500;
+
+        for (auto& ref : map->GetPlayers())
+        {
+            Player* player = ref.GetSource();
+            if (!player || !player->IsAlive() || player->IsGameMaster())
+                continue;
+
+            bool hasPos = player->HasAura(SPELL_POSITIVE_POLARITY);
+            bool hasNeg = player->HasAura(SPELL_NEGATIVE_POLARITY);
+            if (!hasPos && !hasNeg)
+                continue;
+
+            // Which conduit should they be near?
+            Creature* correct = hasPos ? rightPos : leftNeg;
+
+            if (player->IsWithinDistInMap(correct, CONDUIT_MATCH_RANGE))
+            {
+                // Correct side — grant a stack of the charge buff
+                uint32 stackSpell = hasPos ? SPELL_POSITIVE_CHARGE_STACK : SPELL_NEGATIVE_CHARGE_STACK;
+                uint8 stacks = 1;
+                if (Aura* aura = player->GetAura(stackSpell))
+                    stacks = aura->GetStackAmount() + 1;
+                player->SetAuraStack(stackSpell, player, stacks);
+            }
+            else
+            {
+                // Wrong side or not near either — take charge damage
+                uint32 dmgSpell = hasPos ? SPELL_NEGATIVE_CHARGE : SPELL_POSITIVE_CHARGE;
+                player->CastCustomSpell(player, dmgSpell, &chargeDmg, nullptr, nullptr, true);
+            }
+        }
+    }
+
+    void SpawnConduits(Creature* thaddius)
+    {
+        float ori = thaddius->GetOrientation();
+        float perpLeft  = ori + static_cast<float>(M_PI / 2.0);
+        float perpRight = ori - static_cast<float>(M_PI / 2.0);
+
+        float lx = thaddius->GetPositionX() + CONDUIT_OFFSET * cosf(perpLeft);
+        float ly = thaddius->GetPositionY() + CONDUIT_OFFSET * sinf(perpLeft);
+        float rx = thaddius->GetPositionX() + CONDUIT_OFFSET * cosf(perpRight);
+        float ry = thaddius->GetPositionY() + CONDUIT_OFFSET * sinf(perpRight);
+        float z  = thaddius->GetPositionZ();
+
+        if (Creature* left = thaddius->SummonCreature(NPC_NEGATIVE_CONDUIT, lx, ly, z, ori, TEMPSUMMON_MANUAL_DESPAWN))
+            _leftGuid = left->GetGUID();
+        if (Creature* right = thaddius->SummonCreature(NPC_POSITIVE_CONDUIT, rx, ry, z, ori, TEMPSUMMON_MANUAL_DESPAWN))
+            _rightGuid = right->GetGUID();
+
+        // Apply fixed polarity auras (left=negative, right=positive)
+        ApplyConduitAuras(thaddius->GetMap());
+    }
+
+    void ApplyConduitAuras(Map* map)
+    {
+        if (!map)
+            return;
+
+        // Left = negative, right = positive (fixed)
+        if (Creature* left = map->GetCreature(_leftGuid))
+            left->AddAura(SPELL_NEGATIVE_POLARITY, left);
+        if (Creature* right = map->GetCreature(_rightGuid))
+            right->AddAura(SPELL_POSITIVE_POLARITY, right);
+    }
+
+    void DespawnConduits(Map* map)
+    {
+        if (map)
+        {
+            if (Creature* cr = map->GetCreature(_leftGuid))
+                cr->DespawnOrUnsummon();
+            if (Creature* cr = map->GetCreature(_rightGuid))
+                cr->DespawnOrUnsummon();
+        }
+        _leftGuid.Clear();
+        _rightGuid.Clear();
+    }
+};
+
+
+// ---------------------------------------------------------------------------
+//  Thaddius: Polarity charge damage scaling
+//
+//  At N≤2 the conduit update hook handles polarity damage directly, so
+//  zero out the vanilla charge damage (which doesn't fire properly solo).
+//  At N=3-4 scale linearly as before.
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_ThaddiusPolarity : public UnitScript
+{
+public:
+    ScaledEncounters_ThaddiusPolarity()
+        : UnitScript("ScaledEncounters_ThaddiusPolarity",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
+    { }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& damage, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || !target)
+            return;
+
+        if (spellInfo->Id != SPELL_POSITIVE_CHARGE && spellInfo->Id != SPELL_NEGATIVE_CHARGE)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        if (N >= 5)
+            return;
+
+        if (N <= 2)
+        {
+            // Conduit hook handles damage directly — zero vanilla charge
+            damage = 0;
+            return;
+        }
+
+        // N=3-4: linear scaling (original behaviour)
+        damage = damage * static_cast<int32>(N - 1) / 4;
+    }
+};
+
 // ===========================  Gluth  =======================================
+
+// ---------------------------------------------------------------------------
+//  Patchwerk: Hateful Strike damage scaling at low N
+//
+//  Hateful Strike hits the highest-HP melee target for ~28-32k.  Normally
+//  soaked by 2-3 plate tanks rotating cooldowns.  Solo there is no
+//  off-tank to absorb it.  Scale damage:
+//    N=1 → 50%    N=2 → 75%    N=3+ → 100%
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_PatchwerkHateful : public UnitScript
+{
+public:
+    ScaledEncounters_PatchwerkHateful()
+        : UnitScript("ScaledEncounters_PatchwerkHateful",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
+    { }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& damage, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || !target || !target->IsPlayer())
+            return;
+
+        if (spellInfo->Id != SPELL_HATEFUL_STRIKE)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        if (N >= 3)
+            return;
+
+        if (N <= 1)
+            damage /= 2;       // 50%
+        else
+            damage = damage * 3 / 4;  // 75%
+    }
+};
 
 // ---------------------------------------------------------------------------
 //  Gluth: Zombie Chow spawn scaling
@@ -649,6 +908,65 @@ public:
 
         if (despawnChancePct && urand(1, 100) <= despawnChancePct)
             creature->DespawnOrUnsummon(Milliseconds(1));
+    }
+};
+
+// ---------------------------------------------------------------------------
+//  Gluth: Mortal Wound stack cap + clear on Decimate at low N
+//
+//  Mortal Wound reduces healing received by 10% per stack (max 10),
+//  applied every 10s.  At high stacks a solo player can't self-heal at
+//  all, making the Decimate → heal cycle impossible.
+//
+//  Cap stacks and clear on Decimate:
+//    N=1 → cap at 5 stacks (-50% healing), cleared when Decimate hits
+//    N=2 → cap at 7 stacks (-70% healing), cleared when Decimate hits
+//    N=3+ → no cap, no clear (normal)
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_GluthMortalWound : public UnitScript
+{
+public:
+    ScaledEncounters_GluthMortalWound()
+        : UnitScript("ScaledEncounters_GluthMortalWound",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY, UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura || !target->IsPlayer())
+            return;
+
+        if (aura->GetId() != SPELL_MORTAL_WOUND)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        uint8 maxStacks = 0;
+        if (N <= 1)
+            maxStacks = 5;
+        else if (N == 2)
+            maxStacks = 7;
+
+        if (maxStacks && aura->GetStackAmount() > maxStacks)
+            aura->SetStackAmount(maxStacks);
+    }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& /*damage*/, SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || !target || !target->IsPlayer())
+            return;
+
+        if (spellInfo->Id != SPELL_DECIMATE_DAMAGE)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        if (N >= 3)
+            return;
+
+        // Clear Mortal Wound stacks when Decimate hits — gives the
+        // player a window to heal back up before stacks rebuild.
+        target->RemoveAura(SPELL_MORTAL_WOUND);
     }
 };
 
@@ -976,6 +1294,90 @@ public:
     }
 };
 
+// ===========================  Kel'Thuzad  ==================================
+
+// ---------------------------------------------------------------------------
+//  Kel'Thuzad: Guardian of Icecrown thinning at low N
+//
+//  Phase 3 summons RAID_MODE(2, 4) Guardians of Icecrown on staggered
+//  timers.  Two guardians at once is overwhelming for a solo player.
+//  Despawn excess guardians on spawn:
+//    N=1 → 1 guardian max
+//    N=2 → 1 guardian max
+//    N=3+ → normal (2 on 10-man)
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_KTGuardians : public AllCreatureScript
+{
+public:
+    ScaledEncounters_KTGuardians()
+        : AllCreatureScript("ScaledEncounters_KTGuardians")
+    { }
+
+    void OnCreatureAddWorld(Creature* creature) override
+    {
+        if (!creature || creature->GetEntry() != NPC_GUARDIAN_OF_ICECROWN)
+            return;
+
+        Map* map = creature->GetMap();
+        if (!map || !map->IsDungeon())
+            return;
+
+        uint32 N = map->GetPlayersCountExceptGMs();
+        if (N >= 3)
+            return;
+
+        // Count how many guardians are already alive in the instance
+        uint32 aliveCount = 0;
+        std::list<Creature*> guardians;
+        creature->GetCreatureListWithEntryInGrid(guardians, NPC_GUARDIAN_OF_ICECROWN, 200.0f);
+        for (Creature* g : guardians)
+        {
+            if (g->IsAlive() && g->GetGUID() != creature->GetGUID())
+                ++aliveCount;
+        }
+
+        if (aliveCount >= 1)
+            creature->DespawnOrUnsummon(1ms);
+    }
+};
+
+// ---------------------------------------------------------------------------
+//  Kel'Thuzad: Soul Weaver Wail of Souls knockback block at low N
+//
+//  Wail of Souls (28459) is an AoE cone with damage + knockback.  The
+//  knockback keeps melee characters permanently unable to hit the Soul
+//  Weavers.  Block the cast entirely at low N — they still melee.
+//    N=1-2 → blocked
+//    N=3+  → normal
+// ---------------------------------------------------------------------------
+
+class ScaledEncounters_KTSoulWeaver : public AllSpellScript
+{
+public:
+    ScaledEncounters_KTSoulWeaver()
+        : AllSpellScript("ScaledEncounters_KTSoulWeaver",
+                          { ALLSPELLHOOK_ON_SPELL_CHECK_CAST })
+    { }
+
+    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
+    {
+        if (!spell || !spell->GetSpellInfo())
+            return;
+
+        if (spell->GetSpellInfo()->Id != SPELL_WAIL_OF_SOULS)
+            return;
+
+        Unit* caster = spell->GetCaster();
+        if (!caster || caster->GetEntry() != NPC_SOUL_WEAVER)
+            return;
+
+        uint32 N = GetGroupSize(caster);
+        if (N < 3)
+            res = SPELL_FAILED_DONT_REPORT;
+    }
+};
+
 // ---------------------------------------------------------------------------
 //  Registration
 // ---------------------------------------------------------------------------
@@ -991,13 +1393,20 @@ void AddSC_scaled_encounters_naxx()
     new ScaledEncounters_HeiganDisruption();
     new ScaledEncounters_EyeStalks();
     // Construct Quarter
+    new ScaledEncounters_PatchwerkHateful();
+    new ScaledEncounters_ThaddiusConduits();
     new ScaledEncounters_ThaddiusPolarity();
     new ScaledEncounters_ThaddMagneticPull();
+    new ScaledEncounters_TeslaShock();
     new ScaledEncounters_GluthZombies();
+    new ScaledEncounters_GluthMortalWound();
     new ScaledEncounters_GluthDecimate();
     // Military Quarter
     new ScaledEncounters_CavalierBoneArmor();
     new ScaledEncounters_RazuviousCrystal();
     new ScaledEncounters_GothikGate();
     new ScaledEncounters_FourHorsemenMarks();
+    // Frostwyrm Lair
+    new ScaledEncounters_KTGuardians();
+    new ScaledEncounters_KTSoulWeaver();
 }
