@@ -54,6 +54,7 @@ void AddSC_dk_magic_siphon();
 void AddSC_dk_bone_shield_rework();
 void AddSC_dk_grim_prophecy();
 void AddSC_dk_crypt_fever_ebon_plague();
+void AddSC_dk_pestilence_alonecraft();
 void AddSC_dk_harvest_of_souls();
 void AddSC_dk_master_of_ghouls_rework();
 void AddSC_dk_hungry_dead();
@@ -136,6 +137,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_dk_bone_shield_rework();
     AddSC_dk_grim_prophecy();
     AddSC_dk_crypt_fever_ebon_plague();
+    AddSC_dk_pestilence_alonecraft();
     AddSC_dk_harvest_of_souls();
     AddSC_dk_master_of_ghouls_rework();
     AddSC_dk_hungry_dead();

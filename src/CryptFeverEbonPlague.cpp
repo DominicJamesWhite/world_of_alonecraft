@@ -59,7 +59,14 @@ class spell_dk_ebon_plague_apply_cf_AuraScript : public AuraScript
         else if (caster->HasAura(CF_TALENT_R1))
             cfSpellId = CF_DISEASE_R1;
 
-        if (cfSpellId && !target->GetAura(cfSpellId, caster->GetGUID()))
+        if (!cfSpellId)
+            return;
+
+        // If Crypt Fever is already active, refresh its duration;
+        // otherwise apply it fresh.
+        if (Aura* existing = target->GetAura(cfSpellId, caster->GetGUID()))
+            existing->RefreshDuration();
+        else
             caster->CastSpell(target, cfSpellId, true);
     }
 
@@ -67,7 +74,7 @@ class spell_dk_ebon_plague_apply_cf_AuraScript : public AuraScript
     {
         AfterEffectApply += AuraEffectApplyFn(
             spell_dk_ebon_plague_apply_cf_AuraScript::AfterApply,
-            EFFECT_0, SPELL_AURA_LINKED, AURA_EFFECT_HANDLE_REAL);
+            EFFECT_0, SPELL_AURA_LINKED, AURA_EFFECT_HANDLE_REAL_OR_REAPPLY_MASK);
     }
 };
 
