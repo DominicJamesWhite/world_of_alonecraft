@@ -834,11 +834,13 @@ enum ThorimSoloConsts
 
     SPELL_THORIM_BERSERK_FRIENDS    = 62560,
     SPELL_THORIM_SHEATH_LIGHTNING   = 62276,
+    SPELL_THORIM_UNBALANCING_STRIKE = 62130,
+    SPELL_THORIM_RUNIC_SHIELD       = 62321,
 
     // Must match ACTION_FORCE_ARENA_PHASE2 in boss_thorim.cpp
     ACTION_THORIM_FORCE_P2          = 8,
 
-    THORIM_SOLO_TIMER_MS            = 60000,  // 60s before easy-mode auto-P2
+    THORIM_SOLO_TIMER_MS            = 120000, // 120s before easy-mode auto-P2
 };
 
 static bool IsArenaWaveNpc(uint32 entry)
@@ -852,7 +854,7 @@ static bool IsArenaWaveNpc(uint32 entry)
 /// Solo Thorim controller.  At low player counts the encounter is redesigned:
 ///
 ///  **Easy mode (arena):**  If the player doesn't pull the corridor lever
-///  within 60 seconds of Thorim's P1 starting, Thorim jumps down into the
+///  within 120 seconds of Thorim's P1 starting, Thorim jumps down into the
 ///  arena for P2 without requiring the corridor gauntlet.  No Sif, no hard
 ///  mode.  Arena adds stay alive as part of the chaos.
 ///
@@ -996,6 +998,307 @@ public:
     }
 };
 
+/// Neuter Unbalancing Strike's defense-skill debuff for solo players.
+/// The original aura shreds 200 defense skill for 8s, which removes crit
+/// suppression and turns every boss melee into a crushing blow — lethal
+/// without a tank swap.  Solo replaces it with a flat +5% damage taken for
+/// the aura's duration.
+class ScaledEncounters_ThorimUnbalancingStrike : public UnitScript
+{
+public:
+    ScaledEncounters_ThorimUnbalancingStrike()
+        : UnitScript("ScaledEncounters_ThorimUnbalancingStrike",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY,
+                        UNITHOOK_MODIFY_MELEE_DAMAGE,
+                        UNITHOOK_MODIFY_SPELL_DAMAGE_TAKEN })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura || !target->IsPlayer())
+            return;
+        if (aura->GetId() != SPELL_THORIM_UNBALANCING_STRIKE)
+            return;
+        if (GetGroupSize(target) > 1)
+            return;
+        // EFFECT_1 is MOD_SKILL (-200 defense).  Zero it out.
+        if (AuraEffect* eff = aura->GetEffect(EFFECT_1))
+            eff->ChangeAmount(0);
+    }
+
+    void ModifyMeleeDamage(Unit* target, Unit* /*attacker*/, uint32& damage) override
+    {
+        if (!target || !target->IsPlayer())
+            return;
+        if (GetGroupSize(target) > 1)
+            return;
+        if (!target->HasAura(SPELL_THORIM_UNBALANCING_STRIKE))
+            return;
+        damage = damage * 105 / 100;
+    }
+
+    void ModifySpellDamageTaken(Unit* target, Unit* /*attacker*/, int32& damage, SpellInfo const* /*spellInfo*/) override
+    {
+        if (!target || !target->IsPlayer())
+            return;
+        if (GetGroupSize(target) > 1)
+            return;
+        if (!target->HasAura(SPELL_THORIM_UNBALANCING_STRIKE))
+            return;
+        damage = damage * 105 / 100;
+    }
+};
+
+/// Scale Dark Rune Evoker's Runic Shield at low player counts.  The shield
+/// absorbs 40,000 magic damage AND reduces physical damage taken by 51% —
+/// an Evoker with this up takes longer to kill than the rest of the arena
+/// combined when one player is cycling through waves.
+///
+///   N=1 → 4,000 absorb, 10% physical reduction
+///   N=2 → 15,000 absorb, 25% physical reduction
+///   N=3+ → unchanged
+class ScaledEncounters_ThorimRunicShield : public UnitScript
+{
+public:
+    ScaledEncounters_ThorimRunicShield()
+        : UnitScript("ScaledEncounters_ThorimRunicShield",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura)
+            return;
+        if (aura->GetId() != SPELL_THORIM_RUNIC_SHIELD)
+            return;
+
+        uint32 N = GetGroupSize(target);
+        if (N >= 3)
+            return;
+
+        int32 absorbAmount  = (N <= 1) ?  4000 : 15000;
+        int32 physReduction = (N <= 1) ?   -10 :   -25;
+
+        if (AuraEffect* absorb = aura->GetEffect(EFFECT_0))
+            absorb->ChangeAmount(absorbAmount);
+        if (AuraEffect* physRed = aura->GetEffect(EFFECT_1))
+            physRed->ChangeAmount(physReduction);
+    }
+};
+
+// ===========================  Yogg-Saron  ==================================
+
+enum YoggSaronSpells
+{
+    SPELL_SQUEEZE_10            = 64125, // Constrictor Tentacle grip (10-man)
+    SPELL_SQUEEZE_25            = 64126, // Constrictor Tentacle grip (25-man)
+    SPELL_FOCUSED_ANGER         = 57688, // Crusher Tentacle stacking enrage
+    SPELL_MALADY_OF_THE_MIND    = 63830, // Sara P2 fear
+    SPELL_TELEPORT_TO_CHAMBER   = 63997, // Dragons illusion
+    SPELL_TELEPORT_TO_ICECROWN  = 63998, // Icecrown illusion
+    SPELL_TELEPORT_TO_STORMWIND = 63989, // Stormwind illusion
+};
+
+enum YoggSaronNpcs
+{
+    NPC_CRUSHER_TENTACLE        = 33966,
+    NPC_CONSTRICTOR_TENTACLE    = 33983,
+    NPC_CORRUPTOR_TENTACLE      = 33985,
+};
+
+static constexpr uint8 YOGG_FOCUSED_ANGER_SOLO_CAP = 5;
+static constexpr float YOGG_ILLUSION_Z_THRESHOLD   = 300.0f;
+
+/// Suppress Constrictor Tentacle's Squeeze at low player counts.  Squeeze
+/// stuns and lifts the player into the air, killing them unless the tentacle
+/// is DPS'd down — solo, the stunned player can't attack their own grip, so
+/// this is an unrecoverable death.  Mirrors the Kologarn Stone Grip fix.
+///
+/// Squeeze is cast directly on the player (no area target selector), so we
+/// strip the aura on apply rather than filtering a target list.
+///
+///   N=1-2 → grip removed immediately
+///   N=3+  → normal behaviour
+class ScaledEncounters_YoggSqueeze : public UnitScript
+{
+public:
+    ScaledEncounters_YoggSqueeze()
+        : UnitScript("ScaledEncounters_YoggSqueeze",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura || !target->IsPlayer())
+            return;
+
+        uint32 spellId = aura->GetId();
+        if (spellId != SPELL_SQUEEZE_10 && spellId != SPELL_SQUEEZE_25)
+            return;
+
+        if (GetGroupSize(target) <= 2)
+            target->RemoveAura(spellId);
+    }
+};
+
+/// Shorten Malady of the Mind fear at low player counts.  The fear normally
+/// lasts several seconds and "jumps" to another enemy — solo there is no
+/// jump target, so the player sits feared for the full duration with nobody
+/// DPS'ing.  Cut it to 1.5s so it's a nuisance rather than a wipe.
+class ScaledEncounters_YoggMalady : public UnitScript
+{
+public:
+    ScaledEncounters_YoggMalady()
+        : UnitScript("ScaledEncounters_YoggMalady",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura || !target->IsPlayer())
+            return;
+        if (aura->GetId() != SPELL_MALADY_OF_THE_MIND)
+            return;
+
+        if (GetGroupSize(target) <= 2)
+        {
+            aura->SetMaxDuration(1500);
+            aura->SetDuration(1500);
+        }
+    }
+};
+
+/// Slow Corruptor Tentacle casting at low player counts.  The corruptor
+/// spams four debuffs (Apathy, Black Plague, Curse of Doom, Draining Poison)
+/// that all land on the solo player simultaneously — the only way to avoid
+/// the stack is to kill the tentacle before they cast.  We apply a heavy
+/// spell-haste debuff on spawn so each debuff takes ~10s to cast, giving a
+/// comfortable solo kill window.
+///
+///   N=1-2 → -75% spell haste (Curse of Tongues, amplified)
+///   N=3+  → unchanged
+class ScaledEncounters_CorruptorCastSlow : public AllCreatureScript
+{
+public:
+    ScaledEncounters_CorruptorCastSlow()
+        : AllCreatureScript("ScaledEncounters_CorruptorCastSlow")
+    { }
+
+    void OnCreatureAddWorld(Creature* creature) override
+    {
+        if (!creature || creature->GetEntry() != NPC_CORRUPTOR_TENTACLE)
+            return;
+
+        if (GetGroupSize(creature->GetMap()) > 2)
+            return;
+
+        // Curse of Tongues (1714): SPELL_AURA_HASTE_SPELLS, EFFECT_0.
+        // Override the amount to -75% to stretch ~2.5s casts to ~10s.
+        if (Aura* aura = creature->AddAura(1714 /*SPELL_CURSE_OF_TONGUES*/, creature))
+        {
+            aura->SetDuration(-1);
+            aura->SetMaxDuration(-1);
+            if (AuraEffect* eff = aura->GetEffect(EFFECT_0))
+                eff->ChangeAmount(-75);
+        }
+    }
+};
+
+/// Cap Crusher Tentacle's Focused Anger stacks at low player counts.  The
+/// buff has no decay and in a raid the tank swap / off-target damage slows
+/// ramp; solo, every hit stacks on you alone and the tentacle one-shots
+/// before it dies.
+///
+///   N=1-2 → capped at 5 stacks
+///   N=3+  → normal behaviour
+class ScaledEncounters_YoggFocusedAnger : public UnitScript
+{
+public:
+    ScaledEncounters_YoggFocusedAnger()
+        : UnitScript("ScaledEncounters_YoggFocusedAnger",
+                      /*addToScripts=*/true,
+                      { UNITHOOK_ON_AURA_APPLY })
+    { }
+
+    void OnAuraApply(Unit* target, Aura* aura) override
+    {
+        if (!target || !aura)
+            return;
+        if (aura->GetId() != SPELL_FOCUSED_ANGER)
+            return;
+
+        if (GetGroupSize(target) <= 2 &&
+            aura->GetStackAmount() > YOGG_FOCUSED_ANGER_SOLO_CAP)
+            aura->SetStackAmount(YOGG_FOCUSED_ANGER_SOLO_CAP);
+    }
+};
+
+/// Despawn outside tentacles during the brain phase when all players are
+/// inside an illusion portal.  Solo, the Crusher/Constrictor/Corruptor adds
+/// keep spawning and stacking outside while the player is teleported into
+/// the brain room — they're still there (often with full Focused Anger
+/// stacks) the moment the portal closes.
+///
+/// Hook fires when a player is teleported into an illusion room (Chamber,
+/// Icecrown, or Stormwind).  At low player counts (N<=2) we check whether
+/// any players remain above the chamber floor (Z > 300) — if not, every
+/// outside tentacle on the map is despawned.  Next wave spawns normally
+/// after the illusion ends.
+class spell_scaled_yogg_teleport_to_illusion : public SpellScript
+{
+    PrepareSpellScript(spell_scaled_yogg_teleport_to_illusion);
+
+    void HandleAfterHit()
+    {
+        Player* player = GetHitPlayer();
+        if (!player)
+            return;
+
+        Map* map = player->GetMap();
+        if (!map)
+            return;
+
+        if (GetGroupSize(player) > 2)
+            return;
+
+        // Confirm no players remain in the main chamber (above Z threshold).
+        // The teleport effect has already moved this player, so checking all
+        // players on the map catches any stragglers outside.
+        for (auto const& ref : map->GetPlayers())
+        {
+            Player* p = ref.GetSource();
+            if (!p || !p->IsAlive() || p->IsGameMaster())
+                continue;
+            if (p->GetPositionZ() > YOGG_ILLUSION_Z_THRESHOLD)
+                return;
+        }
+
+        static uint32 const entries[] = {
+            NPC_CRUSHER_TENTACLE,
+            NPC_CONSTRICTOR_TENTACLE,
+            NPC_CORRUPTOR_TENTACLE,
+        };
+
+        for (uint32 entry : entries)
+        {
+            std::list<Creature*> tentacles;
+            player->GetCreatureListWithEntryInGrid(tentacles, entry, 500.0f);
+            for (Creature* c : tentacles)
+                if (c->GetPositionZ() > YOGG_ILLUSION_Z_THRESHOLD)
+                    c->DespawnOrUnsummon(Milliseconds(1));
+        }
+    }
+
+    void Register() override
+    {
+        AfterHit += SpellHitFn(spell_scaled_yogg_teleport_to_illusion::HandleAfterHit);
+    }
+};
+
 void AddSC_scaled_encounters_ulduar()
 {
     new ScaledEncounters_RazorscaleFuseArmor();
@@ -1015,4 +1318,11 @@ void AddSC_scaled_encounters_ulduar()
     new ScaledEncounters_SnaplasherBark();
     new ScaledEncounters_ThorimSolo();
     new ScaledEncounters_ThorimBerserk();
+    new ScaledEncounters_ThorimUnbalancingStrike();
+    new ScaledEncounters_ThorimRunicShield();
+    new ScaledEncounters_YoggSqueeze();
+    new ScaledEncounters_YoggMalady();
+    new ScaledEncounters_CorruptorCastSlow();
+    new ScaledEncounters_YoggFocusedAnger();
+    RegisterSpellScript(spell_scaled_yogg_teleport_to_illusion);
 }
