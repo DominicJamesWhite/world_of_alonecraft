@@ -317,6 +317,40 @@ def main():
         if base_shapeshift:
             print(f"\nWARNING: Base SpellShapeshiftForm.dbc not found: {base_shapeshift} — skipping.")
 
+    # ── SpellVisual.dbc ────────────────────────────────────────
+    base_spellvisual = getattr(config, "BASE_SPELLVISUAL_DBC_PATH", None)
+    if base_spellvisual and os.path.isfile(base_spellvisual):
+        print("\n--- SpellVisual.dbc ---")
+        SV_FIELD_COUNT = 32
+        SV_RECORD_SIZE = SV_FIELD_COUNT * 4  # 128 bytes
+        sv_records, sv_sb = read_int_dbc(base_spellvisual, SV_FIELD_COUNT, SV_RECORD_SIZE)
+
+        # Infernal Bargain (63349) channel visual.  There is no colour/tint field
+        # anywhere in the visual chain -- colour lives in the particle models -- so
+        # recolouring means pointing at a different kit.  Kit 6719 is the client's
+        # own fire twin of Evocation's channel kit 2489: same AnimationId 125 and
+        # SoundID 4974, but CycloneFire/Fire_Precast_Low_Hand instead of
+        # CycloneWater/Lightning_PreCast_Low_Hand.  Blizzard only ever references
+        # 6719 as a StateKit, so we add a SpellVisual that uses it as a ChannelKit.
+        INFERNAL_BARGAIN_VISUAL_ID = 200001
+        FIRE_EVOCATION_CHANNEL_KIT = 6719
+        CHANNEL_KIT_FIELD_INDEX = 6
+        if INFERNAL_BARGAIN_VISUAL_ID in sv_records:
+            print(f"WARNING: SpellVisual {INFERNAL_BARGAIN_VISUAL_ID} already exists in base — overwriting")
+
+        sv_row = [0] * SV_FIELD_COUNT
+        sv_row[0] = INFERNAL_BARGAIN_VISUAL_ID
+        sv_row[CHANNEL_KIT_FIELD_INDEX] = FIRE_EVOCATION_CHANNEL_KIT
+        sv_records[INFERNAL_BARGAIN_VISUAL_ID] = sv_row
+        print(f"Added SpellVisual {INFERNAL_BARGAIN_VISUAL_ID}: ChannelKit -> {FIRE_EVOCATION_CHANNEL_KIT}")
+
+        sv_out = os.path.join(output_dir, "DBFilesClient", "SpellVisual.dbc")
+        write_int_dbc(sv_out, sv_records, SV_FIELD_COUNT, SV_RECORD_SIZE, sv_sb)
+        dbc_files.append("SpellVisual.dbc")
+    else:
+        if base_spellvisual:
+            print(f"\nWARNING: Base SpellVisual.dbc not found: {base_spellvisual} — skipping.")
+
     # ── MPQ Packing ────────────────────────────────────────────
     print()
     pack_mpq(output_dir, dbc_files)

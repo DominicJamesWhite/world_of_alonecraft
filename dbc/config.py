@@ -7,6 +7,7 @@ _BASE_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "base")
 BASE_DBC_PATH = _os.path.join(_BASE_DIR, "Spell.dbc")
 BASE_TALENT_DBC_PATH = _os.path.join(_BASE_DIR, "Talent.dbc")
 BASE_SHAPESHIFT_DBC_PATH = _os.path.join(_BASE_DIR, "SpellShapeshiftForm.dbc")
+BASE_SPELLVISUAL_DBC_PATH = _os.path.join(_BASE_DIR, "SpellVisual.dbc")
 
 # MySQL connection (same as AzerothCore)
 MYSQL_HOST = "127.0.0.1"

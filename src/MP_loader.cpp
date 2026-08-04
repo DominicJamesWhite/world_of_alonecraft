@@ -80,6 +80,23 @@ void AddSC_sha_healing_way();
 void AddSC_sha_natures_guardian();
 void AddSC_natures_guardian_pets();
 void AddSC_spec_command();
+void AddSC_warl_shard_on_proc();
+void AddSC_warl_ruin();
+void AddSC_warl_backlash();
+void AddSC_warl_infernal_bargain();
+void AddSC_warl_wailing_soul();
+void AddSC_warl_sacrifice_the_weak();
+void AddSC_warl_demonology();
+void AddSC_warl_demon_pets();
+void AddSC_warl_health_funnel_mana_feed();
+void AddSC_warl_metamorphosis();
+void AddSC_rog_tricks_self();
+void AddSC_rog_master_of_deception();
+void AddSC_rog_dirty_tricks();
+void AddSC_rog_hemorrhage();
+void AddSC_rog_finishers();
+void AddSC_rog_bladework();
+void AddSC_alonecraft_testlog();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -163,4 +180,21 @@ void Addworld_of_alonecraftScripts()
     AddSC_sha_natures_guardian();
     AddSC_natures_guardian_pets();
     AddSC_spec_command();
+    AddSC_warl_shard_on_proc();
+    AddSC_warl_ruin();
+    AddSC_warl_backlash();
+    AddSC_warl_infernal_bargain();
+    AddSC_warl_wailing_soul();
+    AddSC_warl_sacrifice_the_weak();
+    AddSC_warl_demonology();
+    AddSC_warl_demon_pets();
+    AddSC_warl_health_funnel_mana_feed();
+    AddSC_warl_metamorphosis();
+    AddSC_rog_tricks_self();
+    AddSC_rog_master_of_deception();
+    AddSC_rog_dirty_tricks();
+    AddSC_rog_hemorrhage();
+    AddSC_rog_finishers();
+    AddSC_rog_bladework();
+    AddSC_alonecraft_testlog();
 }

@@ -1,0 +1,34 @@
+-- ===========================================================================
+-- Warlock / Demonology: Felguard Immolation Aura requires Metamorphosis
+-- ===========================================================================
+--
+-- 200407 (Immolation Aura), 200408 (Immolation damage) and 200415 (Demonic
+-- Lash damage) were cloned from Blizzard's Metamorphosis-only 50589/50590 via
+-- gen_sql.py dbc --base, and the clone kept Stances = 2097152
+-- (1 << 21 = FORM_METAMORPHOSIS, UnitDefines.h:94).  The "-- Overrides:"
+-- comment in woa_2026_08_02_02.sql never mentions the field, so it went
+-- unnoticed.
+--
+-- A pet is never shapeshifted, so SpellInfo::CheckShapeshift takes the
+-- !actAsShifted branch (SpellInfo.cpp:1483) and rejects every cast with
+-- SPELL_FAILED_ONLY_SHAPESHIFT, since none of these rows set
+-- SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED (0x80000).  The call site in
+-- Spell.cpp:5717 is not player-guarded, so pets hit it too.  Client-side the
+-- same field renders the "Requires Metamorphosis" tooltip line.
+--
+-- Clearing Stances rather than setting the 0x80000 attribute: the attribute
+-- would fix the server check but leave the client still printing "Requires
+-- Metamorphosis", since that text is driven by Stances.
+--
+-- 200415 is only ever cast triggered (WarlockDemonPets.cpp:432) so it was not
+-- actually broken, but it carries the same inherited value and is cleaned up
+-- here for consistency.
+--
+-- Single-column UPDATE, not DELETE + full-row INSERT: a re-INSERT would revert
+-- the rank retunes applied by woa_2026_08_04_01.sql.
+--
+-- Blizzard's own 50589/50590 stay untouched (frozen per woa_2026_08_02_07.sql).
+--
+-- ===========================================================================
+
+UPDATE `alonecraft_spell_dbc` SET `Stances` = 0 WHERE `ID` IN (200407, 200408, 200415);

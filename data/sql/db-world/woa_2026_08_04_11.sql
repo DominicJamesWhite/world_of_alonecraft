@@ -1,0 +1,24 @@
+-- ===========================================================================
+-- Warlock / Demonology: Felguard Immolation Aura mana cost
+-- ===========================================================================
+--
+-- 200407 was cloned from Blizzard's 50589 and inherited
+-- ManaCostPercentage = 64, i.e. 64% of base mana.  That was priced for a
+-- Metamorphosis-only cooldown cast by the warlock; as a repeatable Felguard
+-- ability on a 15 second cooldown it drains the pet almost instantly.
+--
+-- Price it against the Felguard's other yellow damage ability instead.  Cleave
+-- (30213 / 30219 / 30223, all ranks) costs ManaCostPercentage = 10, so 150% of
+-- that is 15.  Same units and same power type (PowerType = 0, POWER_MANA):
+-- Spell::CalcPowerCost turns ManaCostPercentage into a percentage of the
+-- caster's create mana, and both spells are cast by the same pet, so the
+-- comparison is direct.
+--
+-- Single-column UPDATE, not DELETE + full-row INSERT: a re-INSERT would revert
+-- woa_2026_08_04_09.sql (Stances) and woa_2026_08_04_10.sql (damage retune).
+--
+-- Blizzard's own 50589 stays untouched.
+--
+-- ===========================================================================
+
+UPDATE `alonecraft_spell_dbc` SET `ManaCostPercentage` = 15 WHERE `ID` = 200407;
