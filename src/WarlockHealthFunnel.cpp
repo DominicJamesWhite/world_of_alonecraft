@@ -16,9 +16,9 @@
 //  Alonecraft: Mana Feed's Health Funnel half (Demonology item 11b)
 // ---------------------------------------------------------------------------
 //
-//  Health Funnel additionally restores 5% of the demon's maximum mana per tick.
+//  Health Funnel additionally restores 20% of the demon's maximum mana per tick.
 //  The percentage lives in talent 30326 EFFECT_1, a SPELL_AURA_DUMMY holder
-//  (woa_2026_08_02_03.sql).  Mana Feed's other half -- the demon's damage
+//  (woa_2026_08_02_03.sql, raised from 5% to 20% in woa_2026_08_05_01.sql).  Mana Feed's other half -- the demon's damage
 //  returning mana to the owner -- is 30326 EFFECT_0 and is implemented
 //  separately as spell_warl_demon_mana_feed in WarlockDemonPets.cpp.
 //

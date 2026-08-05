@@ -445,11 +445,11 @@ class spell_warl_molten_core : public AuraScript
 };
 
 // ---------------------------------------------------------------------------
-//  Item 15 -- Nemesis: the warlock's own critical strikes grant a Soul Shard
+//  Item 15 -- Nemesis: the warlock's own attacks may grant a Soul Shard
 // ---------------------------------------------------------------------------
 //  The pet half lives in WarlockDemonPets.cpp.  Here the talent rank IS the
-//  spell id, so spell_proc supplies both the critical-strike gate and the
-//  5/10/15% chance, leaving only the shard grant.
+//  spell id, so spell_proc's ProcsPerMinute column carries the 2/4/6 PPM rate
+//  directly (the Killing Machine pattern), leaving only the shard grant.
 class spell_warl_nemesis_shard : public AuraScript
 {
     PrepareAuraScript(spell_warl_nemesis_shard);
@@ -466,7 +466,7 @@ class spell_warl_nemesis_shard : public AuraScript
         if (GetSoulShardCount(player) >= SOUL_SHARD_MAX)
             return;
 
-        ACTEST("WARL.NEMESIS", "owner crit proc talent={} (spell_proc gated chance)", GetId());
+        ACTEST("WARL.NEMESIS", "owner proc talent={} (spell_proc PPM gated)", GetId());
         AddSoulShards(player, 1, "nemesis-owner");
     }
 

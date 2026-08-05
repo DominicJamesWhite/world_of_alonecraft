@@ -88,10 +88,6 @@ enum WarlockDemonPetSpells
     TALENT_DEMONIC_RESILIENCE_R2    = 30320,
     TALENT_DEMONIC_RESILIENCE_R3    = 30321,
 
-    TALENT_NEMESIS_R1               = 63117,
-    TALENT_NEMESIS_R2               = 63121,
-    TALENT_NEMESIS_R3               = 63123,
-
     // Alonecraft custom spells (woa_2026_08_02_02.sql).
     SPELL_FELGUARD_IMMOLATION_AURA  = 200407,
     SPELL_FEL_SYNERGY_OWNER_HEAL    = 200424,
@@ -717,11 +713,13 @@ class spell_warl_demon_resilience : public AuraScript
 };
 
 // ---------------------------------------------------------------------------
-//  Item 15 -- Nemesis: the demon's critical strikes may grant a Soul Shard
+//  Item 15 -- Nemesis: the demon's attacks may grant a Soul Shard
 // ---------------------------------------------------------------------------
-//  One shared pet aura across all three ranks, so the per-rank chance cannot
-//  live in spell_proc (which is keyed by spell id) and is rolled here instead.
-//  spell_proc still supplies the "must be a critical strike" gate.
+//  One carrier aura per talent rank (200422/200425/200426), because the rate
+//  lives in spell_proc's ProcsPerMinute column and spell_proc is keyed by
+//  spell id -- the same reason Killing Machine's five ranks are five spells.
+//  The engine does the whole roll in Aura::CalcProcChance, so all that is left
+//  here is handing over the shard.
 class spell_warl_demon_nemesis : public AuraScript
 {
     PrepareAuraScript(spell_warl_demon_nemesis);
@@ -735,21 +733,12 @@ class spell_warl_demon_nemesis : public AuraScript
         if (!owner)
             return;
 
-        // Cheap early-out so a capped warlock never rolls or chat-spams.
+        // Cheap early-out so a capped warlock never chat-spams.
         if (GetSoulShardCount(owner) >= SOUL_SHARD_MAX)
             return;
 
-        int32 const chance = OwnerTalentAmount(pet,
-            {TALENT_NEMESIS_R1, TALENT_NEMESIS_R2, TALENT_NEMESIS_R3}, EFFECT_2);
-        if (chance <= 0 || !roll_chance_i(chance))
-        {
-            ACTEST("WARL.NEMESIS", "pet={} crit proc chance={} roll=fail",
-                Alonecraft::TestLog::N(pet), chance);
-            return;
-        }
-
-        ACTEST("WARL.NEMESIS", "pet={} crit proc chance={} roll=PASS",
-            Alonecraft::TestLog::N(pet), chance);
+        ACTEST("WARL.NEMESIS", "pet={} proc carrier={} (spell_proc PPM gated)",
+            Alonecraft::TestLog::N(pet), GetId());
         AddSoulShards(owner, 1, "nemesis-pet");
     }
 

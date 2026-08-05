@@ -386,7 +386,7 @@ Then respec it away and re-summon.
 **Steps:** at low mana, let your demon attack for ~30s. Then channel Health Funnel on a mana-drained demon.
 **Trace:**
 - `WARL.PET.MANAFEED pet=... damage=N pct=P mana=M ownerMana X -> Y` (throttled to 1/sec by spell_proc)
-- `WARL.MANAFEED Mana Feed tick demon=... pct=5 mana=M demonMana X -> Y`
+- `WARL.MANAFEED Mana Feed tick demon=... pct=20 mana=M demonMana X -> Y`
 
 ### WM-11 — Fel Attunement: demon inherits your haste
 **Steps:** `.woatest state base`, then apply a haste buff to yourself (Bloodlust/Heroism, or a haste trinket) and wait ~4s.
@@ -405,10 +405,15 @@ Then respec it away and re-summon.
 **Trace:** `WARL.PET.RESILIENCE pet=... damageTakenPct=N` — **N must be negative** (-5/-10/-15). A positive number here is a bug.
 
 ### WM-14 — Nemesis
-**Steps:** ~30 of your own spells at a dummy, then ~30 pet attacks, with `.woatest note` between.
+**Steps:** at rank 3, spend one timed minute casting at a dummy with the demon
+attacking, using `.woatest note` to bracket it. Neither half is crit-gated any
+more, and neither rolls in script — both rates come from `spell_proc`'s
+`ProcsPerMinute`, so the test is the *rate*, not the roll.
 **Trace:**
-- `WARL.NEMESIS owner crit proc talent=...` → `WARL.SHARD gain reason=nemesis-owner`
-- `WARL.NEMESIS pet=... crit proc chance=5|10|15 roll=PASS|fail` → `gain reason=nemesis-pet`
+- `WARL.NEMESIS owner proc talent=63123 (spell_proc PPM gated)` → `WARL.SHARD gain reason=nemesis-owner`, ~6 per minute of casting
+- `WARL.NEMESIS pet=... proc carrier=200426 (spell_proc PPM gated)` → `gain reason=nemesis-pet`, ~6 per minute of demon attacks
+- The carrier id must track the rank: 200422 / 200425 / 200426 for ranks 1/2/3. The wrong id here means `spell_pet_auras` did not update.
+- DoT ticks must **not** appear as procs — `PROC_FLAG_DONE_PERIODIC` is deliberately off.
 
 ### WM-15 — Metamorphosis as a shard-fuelled stance
 **Steps:**
