@@ -46,3 +46,10 @@ local.properties
 .loadpath
 .project
 .cproject
+
+# Alonecraft deploy config: secrets and machine-specific values.
+# The tracked *.overrides.conf siblings are safe to commit; these are not.
+*.overrides.local.conf
+
+# Python bytecode
+__pycache__/
