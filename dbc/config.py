@@ -35,3 +35,4 @@ MYSQL_DB = "acore_world"
 
 # Output directory (relative to this script)
 OUTPUT_DIR = "./output"
+BASE_TALENTTAB_DBC_PATH = _os.path.join(_BASE_DIR, "TalentTab.dbc")

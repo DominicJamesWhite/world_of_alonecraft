@@ -294,6 +294,18 @@ SPELLRANGE_FMT = "nffffi" + "s" * 16 + "i" + "s" * 16 + "i"
 SPELLCASTTIMES_COLUMNS = ("ID", "CastTime", "CastTimePerLevel", "MinCastTime")
 SPELLCASTTIMES_FMT = "niii"
 
+# BackgroundFile is the authority for which TalentFrame art a tree uses, e.g.
+# "MageArcane" -> Interface\TalentFrame\MageArcane-{TopLeft,TopRight,
+# BottomLeft,BottomRight}.blp.  The names are not guessable: Warlock
+# Demonology is "WarlockSummoning" and Warrior Arms is "WarriorArm".
+TALENTTAB_COLUMNS = (
+    ("ID",)
+    + tuple(f"Name{i}" for i in range(16)) + ("NameFlags",)
+    + ("SpellIconID", "RaceMask", "ClassMask", "PetTalentMask", "OrderIndex",
+       "BackgroundFile")
+)
+TALENTTAB_FMT = "n" + "s" * 16 + "i" + "iiiii" + "s"
+
 
 def encode_record(row, string_block, new_strings):
     """Encode a row dict into a 936-byte DBC record.
