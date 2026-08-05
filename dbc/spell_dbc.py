@@ -216,6 +216,85 @@ def load_spell_index(dbc_path):
     return {sid: decode_record(data, string_block) for sid, data in records.items()}
 
 
+def read_dbc(path, columns, fmt, quiet=False):
+    """Read any WDBC file into {id: {column: value}}.
+
+    The generic form of read_base_dbc + decode_record.  Use it for the small
+    index DBCs (SpellIcon, SpellDuration, SpellRange, SpellCastTimes,
+    SpellRadius) that Spell.dbc's 234-column format does not describe.
+    read_int_dbc in build_dbc.py cannot read these because SpellIcon.dbc
+    carries a string field.
+
+    columns: sequence of column names, in binary field order
+    fmt:     one char per field -- 'f' float, 's' string offset, else int32
+    """
+    if len(columns) != len(fmt):
+        sys.exit(f"ERROR: {path}: {len(columns)} columns but {len(fmt)} format chars")
+
+    with open(path, "rb") as f:
+        if f.read(4) != WDBC_MAGIC:
+            sys.exit(f"ERROR: {path} is not a valid WDBC file")
+
+        record_count, field_count, record_size, string_size = struct.unpack("<4I", f.read(16))
+        if field_count != len(fmt):
+            sys.exit(f"ERROR: {path} has {field_count} fields, expected {len(fmt)}")
+        if record_size != len(fmt) * 4:
+            sys.exit(f"ERROR: {path} record size {record_size}, expected {len(fmt) * 4}")
+
+        raw = [f.read(record_size) for _ in range(record_count)]
+        string_block = f.read(string_size)
+
+    rows = {}
+    for data in raw:
+        row = {}
+        for i, col in enumerate(columns):
+            offset = i * 4
+            c = fmt[i]
+            if c == "f":
+                row[col] = struct.unpack_from("<f", data, offset)[0]
+            elif c == "s":
+                str_offset = struct.unpack_from("<I", data, offset)[0]
+                if str_offset == 0:
+                    row[col] = ""
+                else:
+                    end = string_block.index(b"\x00", str_offset)
+                    row[col] = string_block[str_offset:end].decode("utf-8", errors="replace")
+            else:
+                row[col] = struct.unpack_from("<i", data, offset)[0]
+        rows[row[columns[0]]] = row
+
+    if not quiet:
+        print(f"Read {len(rows)} records from {path}")
+    return rows
+
+
+# ── Index DBC schemas (3.3.5a) ─────────────────────────────────────────────
+# Only the fields the tooltip resolver actually reads are named; trailing
+# padding columns are still declared because the format must cover every field.
+
+SPELLICON_COLUMNS = ("ID", "TextureFilename")
+SPELLICON_FMT = "ns"
+
+SPELLDURATION_COLUMNS = ("ID", "Duration", "DurationPerLevel", "MaxDuration")
+SPELLDURATION_FMT = "niii"
+
+SPELLRADIUS_COLUMNS = ("ID", "Radius", "RadiusPerLevel", "MaxRadius")
+SPELLRADIUS_FMT = "nfff"
+
+# A DBC locale string array is 16 locale slots followed by one flags int --
+# not 17 strings.  Reading the flags word as a string offset walks off the
+# end of the string block.
+SPELLRANGE_COLUMNS = (
+    ("ID", "MinRangeHostile", "MinRangeFriend", "MaxRangeHostile", "MaxRangeFriend", "Flags")
+    + tuple(f"DisplayName{i}" for i in range(16)) + ("DisplayNameFlags",)
+    + tuple(f"DisplayNameShort{i}" for i in range(16)) + ("DisplayNameShortFlags",)
+)
+SPELLRANGE_FMT = "nffffi" + "s" * 16 + "i" + "s" * 16 + "i"
+
+SPELLCASTTIMES_COLUMNS = ("ID", "CastTime", "CastTimePerLevel", "MinCastTime")
+SPELLCASTTIMES_FMT = "niii"
+
+
 def encode_record(row, string_block, new_strings):
     """Encode a row dict into a 936-byte DBC record.
 
