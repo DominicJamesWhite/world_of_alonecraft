@@ -127,6 +127,79 @@ def fetch_overrides(field_names):
     return rows
 
 
+def fetch_item_overrides():
+    """Fetch custom item entries from the item_dbc table.
+
+    This is the same table the server loads Item.dbc overrides from
+    (DBCStores.cpp:338), so server and client stay in lockstep from one source.
+    """
+    try:
+        conn = mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASS,
+            database=config.MYSQL_DB,
+        )
+    except mysql.connector.Error as e:
+        sys.exit(f"ERROR: Cannot connect to MySQL: {e}")
+
+    cursor = conn.cursor(dictionary=True)
+
+    # Guard on existence the way fetch_overrides does -- fetch_talent_overrides
+    # queries its table directly and would hard-fail on a fresh DB.
+    cursor.execute(
+        "SELECT COUNT(*) AS cnt FROM information_schema.tables "
+        "WHERE table_schema = %s AND table_name = 'item_dbc'",
+        (config.MYSQL_DB,),
+    )
+    if cursor.fetchone()["cnt"] == 0:
+        print("WARNING: item_dbc table does not exist yet. No overrides applied.")
+        cursor.close()
+        conn.close()
+        return []
+
+    cursor.execute("SELECT * FROM item_dbc")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    print(f"Fetched {len(rows)} custom item(s) from item_dbc")
+    return rows
+
+
+def fetch_table_overrides(table):
+    """Fetch every row of a DBC override table, or [] if it does not exist."""
+    try:
+        conn = mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASS,
+            database=config.MYSQL_DB,
+        )
+    except mysql.connector.Error as e:
+        sys.exit(f"ERROR: Cannot connect to MySQL: {e}")
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT COUNT(*) AS cnt FROM information_schema.tables "
+        "WHERE table_schema = %s AND table_name = %s",
+        (config.MYSQL_DB, table),
+    )
+    if cursor.fetchone()["cnt"] == 0:
+        print(f"WARNING: {table} table does not exist yet. No overrides applied.")
+        cursor.close()
+        conn.close()
+        return []
+
+    cursor.execute(f"SELECT * FROM `{table}`")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    print(f"Fetched {len(rows)} row(s) from {table}")
+    return rows
+
+
 def fetch_talent_overrides():
     """Fetch custom talent entries from talent_dbc table."""
     try:
@@ -290,6 +363,220 @@ def main():
         if base_talent:
             print(f"\nWARNING: Base Talent.dbc not found: {base_talent} — skipping talent patching.")
         # else: BASE_TALENT_DBC_PATH not configured, silently skip
+
+    # ── Item.dbc ───────────────────────────────────────────────
+    base_item = getattr(config, "BASE_ITEM_DBC_PATH", None)
+    if base_item and os.path.isfile(base_item):
+        print("\n--- Item.dbc ---")
+        ITEM_FIELD_COUNT = 8
+        ITEM_RECORD_SIZE = ITEM_FIELD_COUNT * 4  # 32 bytes
+        ITEM_COLUMNS = [
+            "ID", "ClassID", "SubclassID", "Sound_Override_Subclassid",
+            "Material", "DisplayInfoID", "InventoryType", "SheatheType",
+        ]
+        item_records, item_sb = read_int_dbc(base_item, ITEM_FIELD_COUNT, ITEM_RECORD_SIZE)
+        item_overrides = fetch_item_overrides()
+
+        i_added = 0
+        i_modified = 0
+        for row in item_overrides:
+            iid = int(row["ID"])
+            # write_int_dbc packs with '<{n}I' (unsigned), but
+            # Sound_Override_Subclassid is legitimately -1 on most items.
+            # Mask to two's complement so the bytes round-trip identically.
+            values = [int(row.get(col, 0)) & 0xFFFFFFFF for col in ITEM_COLUMNS]
+            if iid in item_records:
+                i_modified += 1
+            else:
+                i_added += 1
+            item_records[iid] = values
+
+        print(f"Applied {len(item_overrides)} override(s): {i_added} new, {i_modified} modified")
+
+        item_out = os.path.join(output_dir, "DBFilesClient", "Item.dbc")
+        write_int_dbc(item_out, item_records, ITEM_FIELD_COUNT, ITEM_RECORD_SIZE, item_sb)
+        dbc_files.append("Item.dbc")
+    else:
+        if base_item:
+            print(f"\nWARNING: Base Item.dbc not found: {base_item} — skipping item patching.")
+
+    # ── ItemLimitCategory.dbc ──────────────────────────────────
+    base_ilc = getattr(config, "BASE_ITEMLIMITCATEGORY_DBC_PATH", None)
+    if base_ilc and os.path.isfile(base_ilc):
+        print("\n--- ItemLimitCategory.dbc ---")
+        ILC_FIELD_COUNT = 20
+        ILC_RECORD_SIZE = ILC_FIELD_COUNT * 4  # 80 bytes
+        # Field layout: 0 ID, 1..16 Name_Lang_* string offsets, 17 Name_Lang_Mask,
+        # 18 Quantity, 19 Flags.  Retail rows populate only slot 1 (enUS).
+        ILC_NAME_ENUS, ILC_MASK, ILC_QUANTITY, ILC_FLAGS = 1, 17, 18, 19
+        DEFAULT_NAME_MASK = 16712190  # the value every retail row carries
+
+        ilc_records, ilc_sb = read_int_dbc(base_ilc, ILC_FIELD_COUNT, ILC_RECORD_SIZE)
+        ilc_overrides = fetch_table_overrides("itemlimitcategory_dbc")
+
+        # Unlike the other patched DBCs this one has a string block, so new
+        # names are appended and referenced by byte offset.
+        string_block = bytearray(ilc_sb)
+        c_added = c_modified = 0
+        for row in ilc_overrides:
+            cid = int(row["ID"])
+            name = (row.get("Name_Lang_enUS") or "").encode("utf-8")
+            offset = len(string_block)
+            string_block.extend(name + b"\x00")
+
+            values = [0] * ILC_FIELD_COUNT
+            values[0] = cid
+            values[ILC_NAME_ENUS] = offset
+            values[ILC_MASK] = int(row.get("Name_Lang_Mask") or DEFAULT_NAME_MASK)
+            values[ILC_QUANTITY] = int(row.get("Quantity") or 1)
+            values[ILC_FLAGS] = int(row.get("Flags") or 0)
+
+            if cid in ilc_records:
+                c_modified += 1
+            else:
+                c_added += 1
+            ilc_records[cid] = values
+
+        print(f"Applied {len(ilc_overrides)} override(s): {c_added} new, {c_modified} modified")
+
+        ilc_out = os.path.join(output_dir, "DBFilesClient", "ItemLimitCategory.dbc")
+        write_int_dbc(ilc_out, ilc_records, ILC_FIELD_COUNT, ILC_RECORD_SIZE,
+                      bytes(string_block))
+        dbc_files.append("ItemLimitCategory.dbc")
+    else:
+        if base_ilc:
+            print(f"\nWARNING: Base ItemLimitCategory.dbc not found: {base_ilc} — skipping.")
+
+    # ── ItemDisplayInfo.dbc ────────────────────────────────────
+    #
+    # The far end of the icon chain: item_template.displayid -> Item.dbc
+    # DisplayInfoID -> here -> InventoryIcon_1 -> Interface\Icons\<name>.blp.
+    # Needed as soon as a custom item wants an icon no retail item wears --
+    # the upgrade tools point at recoloured enchanting reagents that exist only
+    # in this same patch-4.mpq (tools/gen_upgrade_icons.py).
+    #
+    # Same shape as ItemLimitCategory above: an int-field table with a string
+    # block, so icon names are appended and referenced by byte offset.
+    base_idi = getattr(config, "BASE_ITEMDISPLAYINFO_DBC_PATH", None)
+    if base_idi and os.path.isfile(base_idi):
+        print("\n--- ItemDisplayInfo.dbc ---")
+        IDI_FIELD_COUNT = 25
+        IDI_RECORD_SIZE = IDI_FIELD_COUNT * 4  # 100 bytes
+        # Field order, matching IDI_COLUMNS in tools/gen_upgrade_icons.py.
+        IDI_FIELDS = [
+            "ID", "ModelName_1", "ModelName_2", "ModelTexture_1",
+            "ModelTexture_2", "InventoryIcon_1", "InventoryIcon_2",
+            "GeosetGroup_1", "GeosetGroup_2", "GeosetGroup_3", "Flags",
+            "SpellVisualID", "GroupSoundIndex", "HelmetGeosetVis_1",
+            "HelmetGeosetVis_2", "Texture_1", "Texture_2", "Texture_3",
+            "Texture_4", "Texture_5", "Texture_6", "Texture_7", "Texture_8",
+            "ItemVisual", "ParticleColorID",
+        ]
+        IDI_STRING_FIELDS = {
+            "ModelName_1", "ModelName_2", "ModelTexture_1", "ModelTexture_2",
+            "InventoryIcon_1", "InventoryIcon_2", "Texture_1", "Texture_2",
+            "Texture_3", "Texture_4", "Texture_5", "Texture_6", "Texture_7",
+            "Texture_8",
+        }
+
+        idi_records, idi_sb = read_int_dbc(base_idi, IDI_FIELD_COUNT, IDI_RECORD_SIZE)
+        idi_overrides = fetch_table_overrides("itemdisplayinfo_dbc")
+
+        string_block = bytearray(idi_sb)
+        c_added = c_modified = 0
+        for row in idi_overrides:
+            did = int(row["ID"])
+            values = [0] * IDI_FIELD_COUNT
+            for idx, field in enumerate(IDI_FIELDS):
+                if field in IDI_STRING_FIELDS:
+                    text = (row.get(field) or "").encode("utf-8")
+                    # Offset 0 is the string block's leading NUL, so an empty
+                    # string needs no entry of its own -- and must not get one,
+                    # or every blank field would grow the block.
+                    if not text:
+                        continue
+                    values[idx] = len(string_block)
+                    string_block.extend(text + b"\x00")
+                else:
+                    values[idx] = int(row.get(field) or 0)
+
+            if did in idi_records:
+                c_modified += 1
+            else:
+                c_added += 1
+            idi_records[did] = values
+
+        print(f"Applied {len(idi_overrides)} override(s): {c_added} new, {c_modified} modified")
+
+        idi_out = os.path.join(output_dir, "DBFilesClient", "ItemDisplayInfo.dbc")
+        write_int_dbc(idi_out, idi_records, IDI_FIELD_COUNT, IDI_RECORD_SIZE,
+                      bytes(string_block))
+        dbc_files.append("ItemDisplayInfo.dbc")
+    else:
+        if base_idi:
+            print(f"\nWARNING: Base ItemDisplayInfo.dbc not found: {base_idi} — skipping.")
+
+    # ── ItemRandomProperties.dbc + SpellItemEnchantment.dbc ────
+    #
+    # The affix ladder past level 60.  Blizzard has no data up there -- no item
+    # above required level 60 uses RandomProperty at all -- so an upgraded green
+    # would otherwise reach 80 still wearing its level-20 "+5 Intellect".
+    # tools/gen_random_property_tiers.py synthesises the tiers; these two passes
+    # put the same rows in front of the CLIENT, without which the tooltip shows
+    # nothing at all for an unknown enchantment id.
+    #
+    # Both carry string blocks, so descriptions are appended and referenced by
+    # byte offset -- the ItemLimitCategory pattern above.
+    for label, cfg_key, table, field_count, record_size, name_slot, mask_slot,             int_cols in (
+        ("ItemRandomProperties", "BASE_ITEMRANDOMPROPERTIES_DBC_PATH",
+         "itemrandomproperties_dbc", 24, 96, 7, 23,
+         # 1 is InternalName, a string we do not need; the client keys off
+         # Name_Lang_enUS at 7.  2..6 are the enchantment ids.
+         {2: "Enchantment_1", 3: "Enchantment_2", 4: "Enchantment_3",
+          5: "Enchantment_4", 6: "Enchantment_5"}),
+        ("SpellItemEnchantment", "BASE_SPELLITEMENCHANTMENT_DBC_PATH",
+         "spellitemenchantment_dbc", 38, 152, 14, 30,
+         {1: "Charges", 2: "Effect_1", 3: "Effect_2", 4: "Effect_3",
+          5: "EffectPointsMin_1", 6: "EffectPointsMin_2", 7: "EffectPointsMin_3",
+          8: "EffectPointsMax_1", 9: "EffectPointsMax_2", 10: "EffectPointsMax_3",
+          11: "EffectArg_1", 12: "EffectArg_2", 13: "EffectArg_3",
+          31: "ItemVisual", 32: "Flags", 33: "Src_ItemID", 34: "Condition_Id",
+          35: "RequiredSkillID", 36: "RequiredSkillRank", 37: "MinLevel"}),
+    ):
+        base_path = getattr(config, cfg_key, None)
+        if not (base_path and os.path.isfile(base_path)):
+            if base_path:
+                print(f"\nWARNING: Base {label}.dbc not found: {base_path} — skipping.")
+            continue
+
+        print(f"\n--- {label}.dbc ---")
+        records, sb = read_int_dbc(base_path, field_count, record_size)
+        overrides = fetch_table_overrides(table)
+        string_block = bytearray(sb)
+        added = modified = 0
+        for row in overrides:
+            rid = int(row["ID"])
+            text = (row.get("Name_Lang_enUS") or "").encode("utf-8")
+            offset = len(string_block)
+            string_block.extend(text + b"\x00")
+
+            values = [0] * field_count
+            values[0] = rid
+            values[name_slot] = offset
+            values[mask_slot] = int(row.get("Name_Lang_Mask") or 16712190)
+            for idx, col in int_cols.items():
+                values[idx] = int(row.get(col) or 0)
+
+            if rid in records:
+                modified += 1
+            else:
+                added += 1
+            records[rid] = values
+
+        print(f"Applied {len(overrides)} override(s): {added} new, {modified} modified")
+        out_path = os.path.join(output_dir, "DBFilesClient", f"{label}.dbc")
+        write_int_dbc(out_path, records, field_count, record_size, bytes(string_block))
+        dbc_files.append(f"{label}.dbc")
 
     # ── SpellShapeshiftForm.dbc ────────────────────────────────
     base_shapeshift = getattr(config, "BASE_SHAPESHIFT_DBC_PATH", None)

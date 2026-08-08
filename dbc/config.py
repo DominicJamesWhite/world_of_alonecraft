@@ -8,6 +8,29 @@ BASE_DBC_PATH = _os.path.join(_BASE_DIR, "Spell.dbc")
 BASE_TALENT_DBC_PATH = _os.path.join(_BASE_DIR, "Talent.dbc")
 BASE_SHAPESHIFT_DBC_PATH = _os.path.join(_BASE_DIR, "SpellShapeshiftForm.dbc")
 BASE_SPELLVISUAL_DBC_PATH = _os.path.join(_BASE_DIR, "SpellVisual.dbc")
+# Item.dbc is patched from the `item_dbc` MySQL table -- the same table the
+# server reads (DBCStores.cpp:338), so one source feeds both sides.  The client
+# needs it too: the bag icon is resolved client-side via
+# Item.dbc -> DisplayInfoID -> ItemDisplayInfo.dbc -> InventoryIcon, so an item
+# the client's Item.dbc has never heard of renders as a red '?' in bags even
+# though it displays correctly on the character (that path uses the displayid
+# from the item query response instead).
+BASE_ITEM_DBC_PATH = _os.path.join(_BASE_DIR, "Item.dbc")
+# The far end of that chain.  Custom items need a display row of their own when
+# no retail item already wears the icon we want -- the upgrade tools point at
+# recoloured enchanting-reagent icons that exist only in patch-4.mpq.  Extracted
+# from enUS/patch-enUS-3.MPQ, not locale-enUS.MPQ: the locale archive still
+# carries the launch-day table (47829 rows) and the patch chain replaces it
+# wholesale (57986 rows, max id 68742).
+BASE_ITEMDISPLAYINFO_DBC_PATH = _os.path.join(_BASE_DIR, "ItemDisplayInfo.dbc")
+# Synthetic "unique-equipped" families for the item upgrade system.  Uniqueness
+# is enforced by entry ID (Player.cpp:13978), so a variant of a unique trinket
+# would otherwise be equippable alongside its base -- two of the same trinket.
+# A shared ItemLimitCategory covers the whole family.  The client is sent the
+# category id (ItemHandler.cpp:535) and renders its name, so it needs this file.
+BASE_ITEMLIMITCATEGORY_DBC_PATH = _os.path.join(_BASE_DIR, "ItemLimitCategory.dbc")
+BASE_ITEMRANDOMPROPERTIES_DBC_PATH = _os.path.join(_BASE_DIR, "ItemRandomProperties.dbc")
+BASE_SPELLITEMENCHANTMENT_DBC_PATH = _os.path.join(_BASE_DIR, "SpellItemEnchantment.dbc")
 
 # Index DBCs used by the talent-calculator export (tools/export_talents.py).
 # build_dbc.py never writes these -- an override changes a spell's
