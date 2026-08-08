@@ -1,0 +1,50 @@
+-- ==========================================================================
+-- Item upgrade tools: give the SCRIPT_EFFECT an item target
+-- ==========================================================================
+--
+-- Symptom: the tool casts, the cast bar and animation play, the charge is
+-- consumed -- and nothing happens.  Neither CheckCast's rejection messages nor
+-- HandleUpgrade ever ran.
+--
+-- Cause: SPELL_EFFECT_SCRIPT_EFFECT (77) is declared
+-- {EFFECT_IMPLICIT_TARGET_NONE, TARGET_OBJECT_TYPE_NONE} in SpellEffectInfo's
+-- static table (SpellInfo.cpp:668).  Spell::SelectEffectTypeImplicitTargets
+-- returns immediately on that (Spell.cpp:1996), so with EffectImplicitTargetA1
+-- left at 0 the clicked item was never added to the target list.  With no
+-- targets there is no OnEffectHitTarget call, and GetHitItem() is never
+-- reached.  The item still vanished because charge consumption happens in
+-- Spell::TakeCastItem regardless of what the effects did.
+--
+-- Sharpening stones look like a counter-example -- 16138 also has
+-- EffectImplicitTargetA1 = 0 -- but they use SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY
+-- (54), which the same table declares {EXPLICIT, ITEM}.  The implicit target is
+-- derived from the EFFECT, not from the Targets flag mask.  Targets = 16
+-- (TARGET_FLAG_ITEM) only tells the CLIENT to offer the item cursor, which is
+-- why targeting looked like it worked.
+--
+-- Fix: 26 = TARGET_GAMEOBJECT_ITEM_TARGET, the only implicit target in
+-- SpellImplicitTargetInfo::_data with an item object type (SpellInfo.cpp:239).
+-- It routes DEFAULT/REFERENCE_TARGET to Spell::SelectImplicitTargetObjectTargets,
+-- which finds no object target and falls through to AddItemTarget at
+-- Spell.cpp:1845.
+--
+-- No C++ change: ItemUpgradeTool.cpp's OnEffectHitTarget hook is already
+-- correct, it was simply never invoked.
+--
+-- Two things that made this safe rather than merely plausible:
+--
+--   * The ASSERT at Spell.cpp:1829 fires if neither an object nor an item
+--     target is present.  Target 26 puts TARGET_FLAG_GAMEOBJECT_ITEM into
+--     GetExplicitTargetMask(), so SpellInfo::CheckExplicitTarget
+--     (SpellInfo.cpp:1850) rejects the cast with SPELL_FAILED_BAD_TARGETS
+--     before targets are selected.  Our own CheckCast guards it a second time.
+--   * SelectSpellTargets (Spell.cpp:840) will now also set TARGET_FLAG_GAMEOBJECT
+--     on the outgoing packet.  19 Blizzard spells already use target 26 the same
+--     way (Pick Lock on a lockbox among them), so the packet shape is proven.
+--
+-- UPDATE rather than a 234-column re-INSERT: a full-row rewrite would revert
+-- every other column to whatever the generator last believed.
+
+UPDATE `alonecraft_spell_dbc`
+   SET `EffectImplicitTargetA1` = 26   -- TARGET_GAMEOBJECT_ITEM_TARGET
+ WHERE `ID` BETWEEN 201000 AND 201015;
