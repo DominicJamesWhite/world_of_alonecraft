@@ -12,6 +12,7 @@
 #include "Chat.h"
 #include "CommandScript.h"
 #include "DBCStores.h"
+#include "MultiSpec.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
@@ -20,9 +21,10 @@ using namespace Acore::ChatCommands;
 
 // Send a machine-readable system message the addon can parse:
 // "MULTISPEC:active:count:preview" e.g. "MULTISPEC:3:8:5"
-static void SendSpecState(Player* player, ChatHandler* handler)
+void Alonecraft::SendSpecState(Player* player)
 {
-    handler->PSendSysMessage("MULTISPEC:{}:{}:{}",
+    ChatHandler handler(player->GetSession());
+    handler.PSendSysMessage("MULTISPEC:{}:{}:{}",
         player->GetActiveSpec() + 1,
         player->GetSpecsCount(),
         player->GetClientPreviewSpec() + 1);
@@ -129,7 +131,7 @@ public:
         uint8 specIndex = specNum - 1;
         player->SetClientPreviewSpec(specIndex);
         player->SendTalentsInfoData(false); // re-send packet with new preview
-        SendSpecState(player, handler);
+        Alonecraft::SendSpecState(player);
         return true;
     }
 
@@ -156,7 +158,7 @@ public:
 
         player->UpdateSpecCount(newCount);
         handler->PSendSysMessage("Spec count set to {}.", newCount);
-        SendSpecState(player, handler);
+        Alonecraft::SendSpecState(player);
         return true;
     }
 
@@ -179,7 +181,7 @@ public:
         if (!player)
             return false;
 
-        SendSpecState(player, handler);
+        Alonecraft::SendSpecState(player);
         return true;
     }
 };
@@ -189,7 +191,11 @@ public:
 // so the MultiSpec addon can show correct icons immediately.
 // Format: "MULTISPEC_TALENTS:spec:p1:p2:p3" per spec.
 // ----------------------------------------------------------------
-static void GetTalentTreePointsForSpec(Player* player, uint8 spec, uint8 (&points)[3])
+
+// Declared in MultiSpec.h rather than kept file-static: the Quartermaster needs
+// the same answer to pick gear for the active spec.  See the header for why a
+// slot index alone cannot tell you what a spec is.
+void Alonecraft::GetTalentTreePointsForSpec(Player* player, uint8 spec, uint8 (&points)[3])
 {
     points[0] = points[1] = points[2] = 0;
     const PlayerTalentMap& talentMap = player->GetTalentMap();
@@ -225,11 +231,7 @@ public:
 
     void OnPlayerAfterSpecSlotChanged(Player* player, uint8 /*newSlot*/) override
     {
-        ChatHandler handler(player->GetSession());
-        handler.PSendSysMessage("MULTISPEC:{}:{}:{}",
-            player->GetActiveSpec() + 1,
-            player->GetSpecsCount(),
-            player->GetClientPreviewSpec() + 1);
+        Alonecraft::SendSpecState(player);
     }
 
     void OnPlayerLogin(Player* player) override
@@ -237,16 +239,13 @@ public:
         ChatHandler handler(player->GetSession());
 
         // Send overall spec state
-        handler.PSendSysMessage("MULTISPEC:{}:{}:{}",
-            player->GetActiveSpec() + 1,
-            player->GetSpecsCount(),
-            player->GetClientPreviewSpec() + 1);
+        Alonecraft::SendSpecState(player);
 
         // Send talent distribution for each unlocked spec (skip empty specs)
         for (uint8 i = 0; i < player->GetSpecsCount(); ++i)
         {
             uint8 points[3] = {};
-            GetTalentTreePointsForSpec(player, i, points);
+            Alonecraft::GetTalentTreePointsForSpec(player, i, points);
             if (points[0] + points[1] + points[2] > 0)
                 handler.PSendSysMessage("MULTISPEC_TALENTS:{}:{}:{}:{}",
                     i + 1, points[0], points[1], points[2]);
