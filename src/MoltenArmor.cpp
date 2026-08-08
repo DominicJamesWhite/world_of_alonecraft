@@ -5,9 +5,13 @@
 #include "SpellScriptLoader.h"
 #include "Unit.h"
 #include "Log.h"
+#include "EmberScars.h"
 
-#define EMBER_SCARS_DOT_ID 200023
-#define EMBER_SCARS_REMOVAL_CD 200024
+using namespace Alonecraft::Mage;
+
+// Cleansing Flame doubles the number of stacks a crit clears.
+#define CLEANSING_FLAME_R1 11083
+#define CLEANSING_FLAME_R2 12351
 
 class spell_molten_armor_damage_handler : public UnitScript
 {
@@ -98,7 +102,7 @@ private:
             if (newlyApplied)
                 newStacks = 1;
             else
-                newStacks = std::min<uint8>(emberScars->GetStackAmount() + 1, 5);
+                newStacks = std::min<uint8>(emberScars->GetStackAmount() + 1, EMBER_SCARS_MAX_STACKS);
 
             emberScars->SetStackAmount(newStacks);
 
@@ -114,51 +118,45 @@ private:
 };
 
 /*
- * Helper to remove Ember Scars stacks from a player.
- * Extracted so multiple handlers (player-script or trigger-aura) can call it.
+ * Definition of the shared helper declared in EmberScars.h -- see that header
+ * for why every stack holds a share of the CURRENT pool rather than a fixed
+ * 1/EMBER_SCARS_MAX_STACKS.
  */
-static void RemoveEmberScarsStackFromPlayer(Player* player)
+namespace Alonecraft::Mage
 {
-    if (!player)
-        return;
-
-    Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
-    if (!emberScars || emberScars->GetStackAmount() == 0)
-        return;
-
-    AuraEffect* effect = emberScars->GetEffect(EFFECT_0);
-    if (!effect)
-        return;
-
-    uint32 currentTickDamage = effect->GetAmount();
-    uint8 currentStacks = emberScars->GetStackAmount();
-
-    // Check for specific auras to remove 2 stacks
-    bool hasSpecialAura = player->HasAura(11083) || player->HasAura(12351);
-    uint8 stacksToRemove = hasSpecialAura ? 2 : 1;
-    uint32 damageReductionPercent = hasSpecialAura ? 40 : 20;
-
-    // Ensure we don't remove more stacks than available
-    if (currentStacks < stacksToRemove)
+    void RemoveEmberScarsStacks(Player* player, uint8 stacksToRemove)
     {
-        stacksToRemove = currentStacks;
-        damageReductionPercent = stacksToRemove * 20;
+        if (!player || !stacksToRemove)
+            return;
+
+        Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
+        if (!emberScars || emberScars->GetStackAmount() == 0)
+            return;
+
+        AuraEffect* effect = emberScars->GetEffect(EFFECT_0);
+        if (!effect)
+            return;
+
+        uint8 currentStacks = emberScars->GetStackAmount();
+        if (stacksToRemove > currentStacks)
+            stacksToRemove = currentStacks;
+
+        uint8 newStacks = currentStacks - stacksToRemove;
+
+        // Scale in one step rather than via a percentage: no double rounding,
+        // and no assumption that 100 / EMBER_SCARS_MAX_STACKS divides evenly.
+        uint32 newTickDamage = static_cast<uint32>(
+            (static_cast<uint64>(effect->GetAmount()) * newStacks) / currentStacks);
+
+        if (newStacks == 0 || newTickDamage == 0)
+        {
+            emberScars->Remove();
+            return;
+        }
+
+        emberScars->SetStackAmount(newStacks);
+        effect->ChangeAmount(newTickDamage);
     }
-
-    // Reduce tick damage
-    uint32 newTickDamage = (currentTickDamage * (100 - damageReductionPercent)) / 100;
-
-    // Remove stacks
-    uint8 newStacks = currentStacks - stacksToRemove;
-
-    if (newStacks == 0 || newTickDamage == 0)
-    {
-        emberScars->Remove();
-        return;
-    }
-
-    emberScars->SetStackAmount(newStacks);
-    effect->ChangeAmount(newTickDamage);
 }
 
 /*
@@ -184,8 +182,12 @@ class spell_molten_armor_crit_aura_AuraScript : public AuraScript
         if (!(player->HasAura(30482) || player->HasAura(43045) || player->HasAura(43046)))
             return;
 
-        // Remove the appropriate Ember Scars stacks
-        RemoveEmberScarsStackFromPlayer(player);
+        // Cleansing Flame doubles what a crit is worth.  This lives at the
+        // call site rather than inside the helper: it is a property of the
+        // crit path, not of stack removal, and Firebreak must not inherit it.
+        bool hasCleansingFlame = player->HasAura(CLEANSING_FLAME_R1) || player->HasAura(CLEANSING_FLAME_R2);
+
+        RemoveEmberScarsStacks(player, hasCleansingFlame ? 2 : 1);
 
         // Remove the trigger aura (200040) immediately
         if (Aura* trigger = player->GetAura(200040))

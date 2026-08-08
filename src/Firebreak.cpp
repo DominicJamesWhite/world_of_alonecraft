@@ -5,43 +5,13 @@
 #include "SpellScriptLoader.h"
 #include "Unit.h"
 #include "Log.h"
+#include "EmberScars.h"
+
+using namespace Alonecraft::Mage;
 
 #define FIREBREAK_AURA_R1 11103
 #define FIREBREAK_AURA_R2 12357
 #define FIREBREAK_AURA_R3 12358
-#define EMBER_SCARS_DOT_ID 200023
-
-void RemoveEmberScarsStack(Player* player, uint8 stacksToRemove)
-{
-    Aura* emberScars = player->GetAura(EMBER_SCARS_DOT_ID);
-    if (!emberScars || emberScars->GetStackAmount() == 0)
-        return;
-
-    AuraEffect* effect = emberScars->GetEffect(EFFECT_0);
-    if (!effect)
-        return;
-
-    uint32 currentTickDamage = effect->GetAmount();
-    uint8 currentStacks = emberScars->GetStackAmount();
-
-    if (currentStacks < stacksToRemove)
-    {
-        stacksToRemove = currentStacks;
-    }
-
-    uint32 damageReductionPercent = stacksToRemove * 20;
-    uint32 newTickDamage = (currentTickDamage * (100 - damageReductionPercent)) / 100;
-    uint8 newStacks = currentStacks - stacksToRemove;
-
-    if (newStacks == 0 || newTickDamage == 0)
-    {
-        emberScars->Remove();
-        return;
-    }
-
-    emberScars->SetStackAmount(newStacks);
-    effect->ChangeAmount(newTickDamage);
-}
 
 class spell_firebreak_damage_booster : public SpellScript
 {
@@ -102,7 +72,7 @@ public:
         if (!(player->HasAura(FIREBREAK_AURA_R1) || player->HasAura(FIREBREAK_AURA_R2) || player->HasAura(FIREBREAK_AURA_R3)))
             return;
 
-        RemoveEmberScarsStack(player, 1);
+        RemoveEmberScarsStacks(player, 1);
     }
 
     void Register() override

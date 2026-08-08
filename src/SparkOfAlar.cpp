@@ -5,10 +5,16 @@
 #include "SpellScriptLoader.h"
 #include "Unit.h"
 #include "Log.h"
+#include "EmberScars.h"
 
+using namespace Alonecraft::Mage;
+
+// EMBER_SCARS_DOT_ID comes from EmberScars.h -- it used to be a third copy of
+// the literal 200023, which is how the removal maths drifted in the first
+// place.  Spark of Al'ar wipes the aura outright rather than clearing stacks,
+// so it needs the id but none of the share arithmetic.
 enum SparkOfAlarSpells
 {
-    EMBER_SCARS_DOT_ID = 200023,
     SPARK_OF_ALAR_COOLDOWN_DEBUFF = 200029,
     SPARK_OF_ALAR_HEAL_SPELL = 200030
 };
