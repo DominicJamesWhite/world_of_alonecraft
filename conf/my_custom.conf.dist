@@ -15,3 +15,272 @@
 #
 
 MyModule.Enable = 1
+
+########################################
+# Additional talent specializations
+########################################
+#
+#    Alonecraft.ExtraSpec.Enable
+#        Description: Offer "Purchase an Additional Talent Specialization" at
+#                     class trainers to players who already have two specs.
+#                     The retail dual-spec option (1 -> 2 specs) is unaffected.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+Alonecraft.ExtraSpec.Enable = 1
+
+#
+#    Alonecraft.ExtraSpec.Cost
+#        Description: Price of each additional specialization, in copper.
+#        Default:     10000000 (1000 gold, same as dual spec)
+#
+
+Alonecraft.ExtraSpec.Cost = 10000000
+
+#
+#    Alonecraft.ExtraSpec.MaxSpecs
+#        Description: Total specs a player may own. Clamped to the compiled-in
+#                     MAX_TALENT_SPECS (8); values above it have no effect.
+#        Default:     8
+#
+
+Alonecraft.ExtraSpec.MaxSpecs = 8
+
+########################################
+# Experience toggle
+########################################
+#
+#    Alonecraft.XpToggle.Enable
+#        Description: Offer "I no longer wish to gain experience" at class
+#                     trainers, setting PLAYER_FLAGS_NO_XP_GAIN. Reversible at
+#                     any class trainer, and persists across logout.
+#
+#                     Alonecraft runs at 10x XP, so a player who wants to
+#                     actually play a zone outgrows it in one quest hub. This
+#                     makes the 10x rate a choice rather than a mandate.
+#
+#                     Note that while XP is off, quest turn-ins award neither
+#                     experience nor the max-level gold conversion in its place
+#                     - the core's own experience-eliminator NPCs behave the
+#                     same way.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+Alonecraft.XpToggle.Enable = 1
+
+#
+#    Alonecraft.XpToggle.Cost
+#        Description: Price of toggling experience gain, in copper, charged in
+#                     both directions.
+#
+#                     Default 0 on purpose: this is a pacing tool, not a
+#                     challenge mode, and gold is already the scarce resource at
+#                     10x XP. Charging for it only punishes a player who changes
+#                     their mind halfway through a zone.
+#        Default:     0 (free)
+#
+
+Alonecraft.XpToggle.Cost = 0
+
+########################################
+# Flight path discovery
+########################################
+#
+#    Alonecraft.FlightPathDiscovery.Enable
+#        Description: Talking to a flight master reveals the nodes directly
+#                     connected to it by a flight path - one hop only, like
+#                     reading the departure board at a train station.
+#
+#                     At 10x XP whole zones get skipped, so their flight masters
+#                     are never visited and the taxi network ends up full of
+#                     holes caused precisely by levelling efficiently. Travel to
+#                     distant places still takes several hops and the map still
+#                     fills in gradually.
+#
+#                     Backfilling nodes you already knew depends on
+#                     InstantFlightPaths = 2 in worldserver.conf, which is what
+#                     gives flight masters a gossip window. At 0 or 1 only
+#                     first-discovery propagation works.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+Alonecraft.FlightPathDiscovery.Enable = 1
+
+###############################################################################
+# ITEM UPGRADE VENDOR
+#
+# Swaps an equipped item for the next 5-level variant of itself, for gold.
+# Variants are generated offline by tools/gen_item_variants.py; regenerate them
+# after changing anything that affects item stats.
+###############################################################################
+
+#
+#    Alonecraft.ItemUpgrade.Enable
+#        Description: Enable the item upgrade vendor.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+Alonecraft.ItemUpgrade.Enable = 1
+
+#
+#    Alonecraft.ItemUpgrade.EntryBase
+#        Description: First entry ID of the generated variant band. Variants are
+#                     encoded as EntryBase + baseEntry*20 + step, so this MUST
+#                     match VARIANT_BASE in tools/gen_item_variants.py or the
+#                     vendor will find no upgrades at all.
+#                     Change it only to migrate to a fresh band (which is how a
+#                     retune avoids stale client ItemCache.wdb tooltips).
+#        Default:     1000000
+#
+
+Alonecraft.ItemUpgrade.EntryBase = 1000000
+
+#
+#    Alonecraft.ItemUpgrade.CostMultiplier
+#        Description: Scales every upgrade price. The default curve charges
+#                     roughly 5g/10g/27g at level 20 and 187g/373g/992g at level
+#                     80 for uncommon/rare/epic. Raise it if gold is plentiful,
+#                     lower it if the climb feels punitive.
+#        Default:     1.0
+#
+
+Alonecraft.ItemUpgrade.CostMultiplier = 1.0
+
+#
+#    Alonecraft.ItemUpgrade.BaseCost
+#        Description: Copper coefficient of the cost curve
+#                     (BaseCost * qualityMult * targetLevel^2.6). Prefer tuning
+#                     CostMultiplier; this exists to reshape the curve itself.
+#        Default:     21.0
+#
+
+Alonecraft.ItemUpgrade.BaseCost = 21.0
+
+###############################################################################
+# QUARTERMASTER
+#
+# Alonecraft runs 10x XP but leaves loot and gold at 1x, so a character levels
+# roughly ten times faster than equipment arrives and simply outruns their gear.
+# On each level-up "The Quartermaster" mails a few items -- each in a DIFFERENT
+# equipment slot, chosen for the class and the ACTIVE spec, and already carrying
+# the random affix that suits that spec.
+#
+# The candidate pool is `alonecraft_quartermaster_pool`, generated offline by
+# tools/gen_quartermaster_pool.py from the upgrade variants. Regenerate it after
+# ANY variant regeneration: entries would otherwise dangle, and a stored affix
+# id is only valid for the variant's current RandomProperty group.
+###############################################################################
+
+#
+#    Alonecraft.Quartermaster.Enable
+#        Description: Enable level-up gear mail.
+#        Default:     1 - Enabled
+#                     0 - Disabled
+#
+
+Alonecraft.Quartermaster.Enable = 1
+
+#
+#    Alonecraft.Quartermaster.MinLevel
+#        Description: First level that receives a shipment.
+#                     10 is not an arbitrary round number. The level-5 variant
+#                     tier is only 32 items across 4 inventory types, and after
+#                     per-class filtering every class sees just 2-3 distinct
+#                     equipment slots -- half the roster cannot fill a 3-item
+#                     shipment at all, and the single pair of legs would arrive
+#                     every level. At 10x XP, levels 1-9 are ten minutes with
+#                     adequate starting gear, so nothing is lost.
+#        Default:     10
+#
+
+Alonecraft.Quartermaster.MinLevel = 10
+
+#
+#    Alonecraft.Quartermaster.MaxLevel
+#        Description: Last level that receives a shipment.
+#        Default:     80
+#
+
+Alonecraft.Quartermaster.MaxLevel = 80
+
+#
+#    Alonecraft.Quartermaster.ItemsPerLevel
+#        Description: Items per shipment, each in a different equipment slot.
+#                     Slots are drawn at random, never more than one per slot.
+#                     Capped at 12 (MAX_MAIL_ITEMS).
+#        Default:     3
+#
+
+Alonecraft.Quartermaster.ItemsPerLevel = 3
+
+#
+#    Alonecraft.Quartermaster.MaxQualityBand
+#        Description: Highest quality band the Quartermaster may draw from.
+#                     0 = uncommon and rare only, 1 = epics too.
+#                     Keep this at 0. It is the main lever preventing the
+#                     feature from trivialising loot: the Quartermaster's job is
+#                     to keep you functional, while epics stay something you
+#                     earn from raids or the auction house -- which is also what
+#                     the ilvl 200 cap on AH bot listings exists to protect.
+#                     The pool table generates band 1 regardless, so turning
+#                     epics on later needs no regeneration.
+#        Default:     0
+#
+
+Alonecraft.Quartermaster.MaxQualityBand = 0
+
+#
+#    Alonecraft.Quartermaster.SenderEntry
+#        Description: creature_template entry the mail appears to come from.
+#                     Needs no spawn: MAIL_CREATURE mail is resolved by the
+#                     client with CMSG_CREATURE_QUERY, which reads
+#                     creature_template directly.
+#        Default:     200012 - The Quartermaster
+#
+
+Alonecraft.Quartermaster.SenderEntry = 200012
+
+#
+#    Alonecraft.Quartermaster.MaxLevelsPerEvent
+#        Description: Most shipments a single level-change event may produce.
+#                     Purely a GM-command guard. Player::GiveXP calls GiveLevel
+#                     one level at a time, so even a 3-level quest turn-in
+#                     arrives as separate events; only ".character level" jumps,
+#                     and ".character level X 80" should not produce 70 mails.
+#                     The clamp keeps the TOP levels of the jump -- you want
+#                     gear for where you landed.
+#        Default:     3
+#
+
+Alonecraft.Quartermaster.MaxLevelsPerEvent = 3
+
+#
+#    Alonecraft.Quartermaster.IncludeBots
+#        Description: Also mail playerbot characters.
+#                     Leave this off. With mod-playerbots running a few hundred
+#                     random bots that level continuously, each shipment writes
+#                     3 item_instance + 1 mail + 3 mail_items rows for mail no
+#                     bot will ever open -- unbounded database growth in
+#                     exchange for nothing.
+#        Default:     0 - Disabled
+#
+
+Alonecraft.Quartermaster.IncludeBots = 0
+
+#
+#    Alonecraft.Quartermaster.OnlyOnTierChange
+#        Description: Send only at 5-level boundaries instead of every level.
+#                     The emergency brake on volume. Variants exist at 5-level
+#                     steps, so levels 31-34 all draw from the level-30 tier and
+#                     9 of those 12 items are same-tier re-rolls. If the flow of
+#                     gear makes world drops feel pointless, setting this to 1
+#                     cuts volume five-fold with no code change.
+#        Default:     0 - Every level
+#                     1 - Only at levels divisible by 5
+#
+
+Alonecraft.Quartermaster.OnlyOnTierChange = 0
