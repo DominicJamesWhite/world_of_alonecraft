@@ -1,0 +1,30 @@
+-- ===========================================================================
+-- Shaman: drop the orphaned Tidal Focus rank 4 / 5 overrides
+-- ===========================================================================
+--
+-- 2026_04_01_00.sql redesigned Tidal Focus and cut it from 5 ranks to 3:
+--
+--   -- Tidal Focus: reduce talent to 3 ranks (remove ranks 4 & 5)
+--   (593, 262, 1, 2, 16179, 16214, 16215, 0, 0, ...)
+--
+-- but `alonecraft_spell_dbc` still carries overrides for 16216 and 16217,
+-- the old ranks 4 and 5.  They are from an earlier iteration of the design --
+-- their values do not even fit the shipped progression (cost reduction
+-- -5 / -6 against ranks 1-3's -4 / -7 / -11, and 0.8s / 1s cast reduction
+-- against 0.1s / 0.2s / 0.3s).
+--
+-- Talent 593 no longer lists either spell, so they are unlearnable and the
+-- rows are dead: they change no gameplay, but build_dbc.py still writes them
+-- into the client's Spell.dbc every build.  Dropping the overrides reverts
+-- both ids to their untouched Blizzard rows.
+--
+-- This is the same cleanup woa_2026_08_03_02.sql did for Sacrifice the Weak's
+-- unused ranks 2 and 3.
+--
+-- Found by auditing `alonecraft_spell_dbc` for ids that no .sql file in this
+-- directory recreates -- the same audit that turned up the missing Fel
+-- Concentration data in woa_2026_08_06_06.sql.  These two were the only
+-- orphans; talent_dbc and spell_proc were clean.
+-- ===========================================================================
+
+DELETE FROM `alonecraft_spell_dbc` WHERE `ID` IN (16216, 16217);
