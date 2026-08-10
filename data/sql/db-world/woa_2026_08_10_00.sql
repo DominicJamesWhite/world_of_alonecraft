@@ -1,0 +1,21 @@
+-- ============================================================
+-- Fortify (200649): stop the absorb helper replaying a cast visual
+-- ============================================================
+-- RECONSTRUCTED 2026-08-10.  The original file was overwritten and its
+-- prose is lost; the statement below was rebuilt from the live database
+-- and from docs/warrior_implementation_notes.md, which records what it did.
+--
+-- Fortify is Damage Shield's absorb helper.  It was cloned from Last Stand
+-- and, like every clone, inherited every column it was not explicitly told
+-- to change -- including SpellVisual1.  Because Fortify is re-cast on each
+-- damage event, that inherited self-buff cast visual replayed at melee
+-- frequency and interrupted the swing animation.
+--
+-- Zeroing the visual is the whole fix.  The general lesson, per the notes:
+-- check SpellVisual on any helper that is re-cast at melee frequency.
+--
+-- A single-column UPDATE rather than a 234-column re-INSERT, per CLAUDE.md
+-- -- a full-row re-INSERT would revert whatever another file has since set.
+-- ============================================================
+
+UPDATE `alonecraft_spell_dbc` SET `SpellVisual1` = 0, `SpellVisual2` = 0 WHERE `ID` = 200649;

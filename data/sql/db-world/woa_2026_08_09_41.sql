@@ -1,0 +1,25 @@
+-- ============================================================
+-- Warrior (Protection): Shield Specialization, 3 rage -> 2
+-- ============================================================
+-- Follows woa_2026_08_09_38.sql, which cut it from retail's 5 to 3 as part of
+-- the rage income trim in docs/prot_warrior_rage_audit.md.  Income has since
+-- moved again -- Puncture's cost reduction was removed outright in
+-- woa_2026_08_09_40.sql -- and a further point comes off the largest remaining
+-- passive faucet rather than off an ability the player presses.
+--
+-- 23602 is the trigger shared by all five ranks (12298, 12724-12727); the ranks
+-- scale by ProcChance, not by amount, so one row retunes the whole talent.
+--
+-- No tooltip edit either: the rank descriptions reference this spell
+-- cross-spell as $/10;23602s1, so they re-render themselves.
+--
+-- Rage is stored in tenths, and $s1-style CalcValue is BasePoints + DieSides.
+-- 19 + 1 = 20 = 2 rage.
+--
+-- UPDATE, not DELETE + INSERT.  The row already exists (woa_2026_08_09_38.sql
+-- created it), and a full 234-column re-INSERT would revert every other column
+-- to whatever the generating tool assumed -- the rule that file states in its
+-- own header.
+-- ============================================================
+
+UPDATE `alonecraft_spell_dbc` SET `EffectBasePoints1` = 19 WHERE `ID` = 23602;

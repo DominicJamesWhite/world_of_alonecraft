@@ -1,0 +1,28 @@
+-- ============================================================
+-- Warrior (Protection): Blood and Thunder takes Rend's icon
+-- ============================================================
+-- Follow-up to woa_2026_08_09_15.sql.
+--
+-- The talent kept Improved Disarm's icon (a disarm hand), which described the
+-- ability it used to be and gives no clue about the one it is now.  Rend's icon
+-- (SpellIconID 245) is the right pick: what the talent does is put Rend on
+-- everything Thunder Clap hits, so the icon names the effect rather than the
+-- delivery.
+--
+-- SpellIconID is an index into SpellIcon.dbc, which build_dbc.py does not
+-- patch -- 245 is a stock 3.3.5a icon and is already present in every client,
+-- so this needs no art and no MPQ change beyond the Spell.dbc rewrite.
+--
+-- ActiveIconID is left alone: it is only consulted for abilities that show a
+-- distinct icon while active, and this is a passive.
+--
+-- Single-column edit, so UPDATE rather than a 234-column re-INSERT -- a full
+-- re-INSERT here would silently revert the dummy amount and the name that
+-- woa_2026_08_09_15.sql set.
+--
+-- Spells:
+--   12313 / 12804 = Blood and Thunder ranks 1-2
+--   772           = Rend, the icon's original owner
+-- ============================================================
+
+UPDATE `alonecraft_spell_dbc` SET `SpellIconID` = 245 WHERE `ID` IN (12313, 12804);
