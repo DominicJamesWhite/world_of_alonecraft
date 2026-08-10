@@ -10,18 +10,23 @@
 
 #include <limits>
 
-// Warrior Arms -- the two parry conversions
+// Warrior -- the weapon specialization stat conversions
 //
-//   Two-Handed Weapon Specialization (12163 / 12711 / 12712)
+//   Two-Handed Weapon Specialization (12163 / 12711 / 12712)     [Arms]
 //       -- woa_2026_08_07_13.sql
-//   Weapon Mastery (20504 / 20505)
+//   Weapon Mastery (20504 / 20505)                               [Arms]
 //       -- woa_2026_08_07_14.sql
+//   One-Handed Weapon Specialization (16538 - 16542)             [Protection]
+//       -- woa_2026_08_09_37.sql
 //
 // TODO.md:
 //   "Two-Handed Weapon Specialization: ... while using a 2h weapon your chance
 //    to parry is increased by 33/66/100% of your critical strike chance."
 //   "Weapon Mastery: ... while using a two-handed weapon your parry chance is
 //    increased by your strength."
+//   "One-Handed Weapon Specialization: ... while using a one-handed weapon
+//    your critical strike chance is increased by 10/20/30/40/50% of your dodge
+//    and parry chance."
 //
 // Handled by DBC:
 //   Everything except the amount of one effect on each spell.  The damage
@@ -37,14 +42,14 @@
 // (PlayerUpdates.cpp:612-620).  Nothing in Spell.dbc scales one rating off
 // another, so crit-chance-to-parry has to be computed.
 //
-// Both scripts follow RogueMasterOfDeception.cpp exactly: capture the per-rank
-// percentage the DBC put in base points, overwrite the amount with the derived
-// value, and force a 2 second heartbeat so the result tracks gear, buffs and
-// weapon swaps.  Marking a non-periodic effect periodic from a script is legal
-// -- AuraEffect::CalculatePeriodic asks the script first.
+// All three scripts follow RogueMasterOfDeception.cpp exactly: capture the
+// per-rank percentage the DBC put in base points, overwrite the amount with the
+// derived value, and force a 2 second heartbeat so the result tracks gear, buffs
+// and weapon swaps.  Marking a non-periodic effect periodic from a script is
+// legal -- AuraEffect::CalculatePeriodic asks the script first.
 //
-// Both target aura types respond to AURA_EFFECT_HANDLE_CHANGE_AMOUNT_MASK
-// (SpellAuraEffects.cpp:4597 and :4872), so RecalculateAmount() genuinely
+// Every target aura type here responds to AURA_EFFECT_HANDLE_CHANGE_AMOUNT_MASK
+// (SpellAuraEffects.cpp:4597, :4642 and :4872), so RecalculateAmount() genuinely
 // re-applies the value rather than only updating a stored number.
 
 namespace
@@ -74,7 +79,7 @@ class spell_warr_2h_spec_parry : public AuraScript
     void CalculateAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
     {
         // The incoming amount is the per-rank percentage from the DBC
-        // (33 / 66 / 100).  Capture it before overwriting.
+        // (20 / 40 / 60).  Capture it before overwriting.
         int32 const pct = amount;
         amount = 0;
 
@@ -179,6 +184,81 @@ class spell_warr_weapon_mastery_parry : public AuraScript
     }
 };
 
+// ============================================================
+// One-Handed Weapon Specialization: crit = N% of dodge + parry
+// ============================================================
+// The exact mirror of the two-handed talent above, and it needs no explicit
+// one-handed check for the same reason: the spell carries EquippedItemClass 2 /
+// EquippedItemSubClassMask 41105, so core unapplies the whole aura on a weapon
+// swap.  That gate is also what makes the pair non-circular -- the two masks
+// are mutually exclusive, so the crit-to-parry and parry-to-crit conversions
+// can never be active at the same time.
+class spell_warr_1h_spec_crit : public AuraScript
+{
+    PrepareAuraScript(spell_warr_1h_spec_crit);
+
+    void CalculateAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
+    {
+        // The incoming amount is the per-rank percentage from the DBC
+        // (5 / 10 / 15 / 20 / 25).  Capture it before overwriting.
+        int32 const pct = amount;
+        amount = 0;
+
+        Player* player = GetUnitOwner() ? GetUnitOwner()->ToPlayer() : nullptr;
+        if (!player || pct <= 0)
+            return;
+
+        // The two character-sheet fields, written by
+        // Player::UpdateDodgePercentage / UpdateParryPercentage
+        // (StatSystem.cpp:837 and :796).  They already include defense skill,
+        // agility, dodge and parry rating and every SPELL_AURA_MOD_DODGE_PERCENT
+        // / SPELL_AURA_MOD_PARRY_PERCENT the player is carrying.
+        //
+        // Deliberately the *sheet* values, not GetRealDodge()/GetRealParry().
+        // Those two are the post-diminishing-returns numbers the avoidance rolls
+        // actually use (Unit.cpp:3833 and :3860), and they are lower.  The
+        // tooltip promises a share of "your dodge and parry chance", which is
+        // what the player reads off the character sheet -- so that is what gets
+        // converted, and the arithmetic stays checkable in game.
+        float const avoidance = player->GetFloatValue(PLAYER_DODGE_PERCENTAGE)
+                              + player->GetFloatValue(PLAYER_PARRY_PERCENTAGE);
+        if (avoidance <= 0.0f)
+            return;
+
+        amount = int32(avoidance * float(pct) / 100.0f);
+
+        if (amount != _lastLogged)
+        {
+            _lastLogged = amount;
+            ACTEST("WAR.1HSPEC", "rank={} dodge={:.2f} parry={:.2f} pct={} -> extraCrit={} totalCritField={:.2f}",
+                GetId(), player->GetFloatValue(PLAYER_DODGE_PERCENTAGE),
+                player->GetFloatValue(PLAYER_PARRY_PERCENTAGE), pct, amount,
+                player->GetFloatValue(PLAYER_CRIT_PERCENTAGE));
+        }
+    }
+
+    int32 _lastLogged = std::numeric_limits<int32>::lowest();
+
+    void CalcPeriodic(AuraEffect const* /*aurEff*/, bool& isPeriodic, int32& amplitude)
+    {
+        isPeriodic = true;
+        amplitude  = 2 * IN_MILLISECONDS;
+    }
+
+    void HandlePeriodic(AuraEffect const* aurEff)
+    {
+        PreventDefaultAction();
+        GetEffect(aurEff->GetEffIndex())->RecalculateAmount();
+    }
+
+    void Register() override
+    {
+        DoEffectCalcAmount   += AuraEffectCalcAmountFn(spell_warr_1h_spec_crit::CalculateAmount, EFFECT_1, SPELL_AURA_MOD_WEAPON_CRIT_PERCENT);
+        DoEffectCalcPeriodic += AuraEffectCalcPeriodicFn(spell_warr_1h_spec_crit::CalcPeriodic, EFFECT_1, SPELL_AURA_MOD_WEAPON_CRIT_PERCENT);
+        OnEffectPeriodic     += AuraEffectPeriodicFn(spell_warr_1h_spec_crit::HandlePeriodic, EFFECT_1, SPELL_AURA_MOD_WEAPON_CRIT_PERCENT);
+    }
+};
+
 class spell_warr_2h_spec_parry_loader : public SpellScriptLoader
 {
 public:
@@ -201,8 +281,20 @@ public:
     }
 };
 
+class spell_warr_1h_spec_crit_loader : public SpellScriptLoader
+{
+public:
+    spell_warr_1h_spec_crit_loader() : SpellScriptLoader("spell_warr_1h_spec_crit") { }
+
+    AuraScript* GetAuraScript() const override
+    {
+        return new spell_warr_1h_spec_crit();
+    }
+};
+
 void AddSC_war_parry_conversions()
 {
     new spell_warr_2h_spec_parry_loader();
     new spell_warr_weapon_mastery_parry_loader();
+    new spell_warr_1h_spec_crit_loader();
 }

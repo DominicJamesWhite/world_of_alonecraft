@@ -39,6 +39,20 @@ TALENT_COLUMNS = [
     "Flags", "RequiredSpellID", "CategoryMask_1", "CategoryMask_2",
 ]
 
+# ── SkillLineAbility.dbc Format ────────────────────────────────────────────
+# SkillLineAbilityfmt = "niiiixxiiiiixx" — 14 fields, all int32, no strings.
+# This is what decides the spellbook TAB: the client groups a known spell under
+# the tab for its SkillLine, and a spell with no row here falls into "General".
+# Talent.dbc grants the spell; it has no say in where the spell is filed.
+SLA_FIELD_COUNT = 14
+SLA_RECORD_SIZE = SLA_FIELD_COUNT * 4  # 56 bytes
+SLA_COLUMNS = [
+    "ID", "SkillLine", "Spell", "RaceMask", "ClassMask",
+    "ExcludeRace", "ExcludeClass", "MinSkillLineRank", "SupercededBySpell",
+    "AcquireMethod", "TrivialSkillLineRankHigh", "TrivialSkillLineRankLow",
+    "CharacterPoints_1", "CharacterPoints_2",
+]
+
 
 # ── Integer-only DBC Read/Write (Talent.dbc, etc.) ─────────────────────────
 
@@ -230,7 +244,78 @@ def fetch_talent_overrides():
     return rows
 
 
+def fetch_skilllineability_overrides():
+    """Fetch spellbook-tab assignments from the skilllineability_dbc table."""
+    try:
+        conn = mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASS,
+            database=config.MYSQL_DB,
+        )
+    except mysql.connector.Error as e:
+        sys.exit(f"ERROR: Cannot connect to MySQL: {e}")
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT COUNT(*) AS cnt FROM information_schema.tables"
+        " WHERE table_schema = %s AND table_name = 'skilllineability_dbc'",
+        (config.MYSQL_DB,),
+    )
+    if cursor.fetchone()["cnt"] == 0:
+        print("No skilllineability_dbc table — skipping.")
+        cursor.close()
+        conn.close()
+        return []
+
+    cursor.execute("SELECT * FROM skilllineability_dbc")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    print(f"Fetched {len(rows)} skill line ability override(s) from skilllineability_dbc")
+    return rows
+
+
 # ── MPQ Packing ─────────────────────────────────────────────────────────────
+
+# How much dead space to tolerate before rebuilding.  Generous: MPQ has real
+# per-file overhead and the Interface\ payload is not counted below, so a
+# healthy archive sits a little above 1.0.  Anything past 3x is leaked blocks.
+MPQ_BLOAT_FACTOR = 3.0
+MPQ_BLOAT_FLOOR = 128 * 1024 * 1024
+
+
+def _drop_if_bloated(mpq_path, output_dir, dbc_files):
+    """Delete patch-4.mpq when it has grown far past the size of its contents.
+
+    See pack_mpq's docstring for why this is necessary.  Reports rather than
+    acting silently -- an unexpected rebuild is slow (~100s of Interface
+    repacking) and the reason should be visible in the build log.
+    """
+    if not os.path.isfile(mpq_path):
+        return
+
+    actual = os.path.getsize(mpq_path)
+    if actual < MPQ_BLOAT_FLOOR:
+        return
+
+    content = sum(
+        os.path.getsize(p) for p in
+        (os.path.join(output_dir, "DBFilesClient", f) for f in dbc_files)
+        if os.path.isfile(p)
+    )
+    if not content or actual < content * MPQ_BLOAT_FACTOR:
+        return
+
+    print(f"\npatch-4.mpq is {actual / 1e6:.0f} MB for {content / 1e6:.0f} MB of "
+          f"DBCs ({actual / content:.1f}x). `mpqcli add --overwrite` does not "
+          f"reclaim replaced blocks, so this is leaked space accumulated over "
+          f"previous builds.")
+    print("Rebuilding the archive from scratch; build_interface.py will repack "
+          "the Interface\\ entries afterwards.")
+    os.remove(mpq_path)
+
 
 def pack_mpq(output_dir, dbc_files):
     """Pack output DBC file(s) into patch-4.mpq using mpqcli.
@@ -240,8 +325,19 @@ def pack_mpq(output_dir, dbc_files):
     If patch-4.mpq already exists, files are replaced in-place so that
     all other DBC files in the patch are preserved.  If it doesn't exist,
     a fresh MPQ is created with the first file, then remaining files are added.
+
+    In-place replacement LEAKS.  `mpqcli add --overwrite` writes the new block
+    and orphans the old one without reclaiming the space, so every build adds
+    another copy of Spell.dbc -- ~50 MB a time.  Left alone the archive reached
+    1.596 GB holding 61 MB of files, a 26x overhead the player downloads and
+    the client memory-maps.  Rather than rely on someone noticing, the archive
+    is rebuilt from scratch whenever it has grown past MPQ_BLOAT_FACTOR times
+    its own contents; build_interface.py repacks the Interface\\ entries
+    afterwards in the same run, and its cache re-validates against
+    `mpqcli list`, so a fresh archive self-heals.
     """
     mpq_path = os.path.join(output_dir, "patch-4.mpq")
+    _drop_if_bloated(mpq_path, output_dir, dbc_files)
 
     # Use local mpqcli.exe next to this script, or fall back to PATH
     local_mpqcli = os.path.join(SCRIPT_DIR, "mpqcli.exe")
@@ -363,6 +459,37 @@ def main():
         if base_talent:
             print(f"\nWARNING: Base Talent.dbc not found: {base_talent} — skipping talent patching.")
         # else: BASE_TALENT_DBC_PATH not configured, silently skip
+
+    # ── SkillLineAbility.dbc ───────────────────────────────────
+    # Decides the spellbook TAB. Talent.dbc grants a spell but says nothing
+    # about where it is filed, so any new custom spell taught by a talent lands
+    # in "General" until it gets a row here.
+    base_sla = getattr(config, "BASE_SKILLLINEABILITY_DBC_PATH", None)
+    if base_sla and os.path.isfile(base_sla):
+        print("\n--- SkillLineAbility.dbc ---")
+        sla_records, sla_sb = read_int_dbc(base_sla, SLA_FIELD_COUNT, SLA_RECORD_SIZE)
+        sla_overrides = fetch_skilllineability_overrides()
+
+        s_added = 0
+        s_modified = 0
+        for row in sla_overrides:
+            sid = int(row["ID"])
+            values = [int(row.get(col, 0) or 0) for col in SLA_COLUMNS]
+            if sid in sla_records:
+                s_modified += 1
+            else:
+                s_added += 1
+            sla_records[sid] = values
+
+        if sla_overrides:
+            print(f"Applied {len(sla_overrides)} override(s): {s_added} new, {s_modified} modified")
+
+        sla_out = os.path.join(output_dir, "DBFilesClient", "SkillLineAbility.dbc")
+        write_int_dbc(sla_out, sla_records, SLA_FIELD_COUNT, SLA_RECORD_SIZE, sla_sb)
+        dbc_files.append("SkillLineAbility.dbc")
+    else:
+        if base_sla:
+            print(f"\nWARNING: Base SkillLineAbility.dbc not found: {base_sla} — skipping.")
 
     # ── Item.dbc ───────────────────────────────────────────────
     base_item = getattr(config, "BASE_ITEM_DBC_PATH", None)

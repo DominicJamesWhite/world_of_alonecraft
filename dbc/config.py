@@ -8,6 +8,13 @@ BASE_DBC_PATH = _os.path.join(_BASE_DIR, "Spell.dbc")
 BASE_TALENT_DBC_PATH = _os.path.join(_BASE_DIR, "Talent.dbc")
 BASE_SHAPESHIFT_DBC_PATH = _os.path.join(_BASE_DIR, "SpellShapeshiftForm.dbc")
 BASE_SPELLVISUAL_DBC_PATH = _os.path.join(_BASE_DIR, "SpellVisual.dbc")
+# Which spellbook tab a spell lands in is decided client-side by
+# SkillLineAbility.dbc -> SkillLine, not by Talent.dbc.  A brand-new custom
+# spell taught by a talent has no row here, so the client files it under
+# "General" no matter which tree granted it.  Warrior skill lines are 26 Arms,
+# 256 Fury, 257 Protection.  Extracted pristine from the client -- nothing has
+# ever patched this file, so the copy in base/ is retail.
+BASE_SKILLLINEABILITY_DBC_PATH = _os.path.join(_BASE_DIR, "SkillLineAbility.dbc")
 # Item.dbc is patched from the `item_dbc` MySQL table -- the same table the
 # server reads (DBCStores.cpp:338), so one source feeds both sides.  The client
 # needs it too: the bag icon is resolved client-side via

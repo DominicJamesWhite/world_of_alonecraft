@@ -12,6 +12,7 @@ void AddSC_spell_tree_of_life_ap();
 void AddSC_PushbackImmunity();
 void AddSC_mod_lifebloom();
 void AddSC_spell_natures_focus_wrath();
+void AddSC_bear_mangle_rage();
 void AddSC_spell_no_swing_reset_arakkoa();
 void AddSC_spell_mage_mage_armor_custom();
 void AddSC_molten_armor_mechanic();
@@ -105,10 +106,21 @@ void AddSC_rog_bladework();
 void AddSC_war_riposte();
 void AddSC_war_tactical_mastery();
 void AddSC_war_improved_charge();
+void AddSC_war_charge_in_combat();
+void AddSC_war_intervene();
 void AddSC_war_parry_conversions();
+void AddSC_war_toughness();
+void AddSC_war_prot_conversions();
+void AddSC_war_incite();
+void AddSC_war_blood_and_thunder();
+void AddSC_war_improved_thunder_clap();
+void AddSC_war_spellshield();
+void AddSC_war_damage_shield();
+void AddSC_war_barricade();
 void AddSC_alonecraft_testlog();
 void AddSC_flight_path_discovery();
 void AddSC_hunter_pet_level_sync();
+void AddSC_hunter_trap_launcher();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -125,6 +137,7 @@ void Addworld_of_alonecraftScripts()
     AddSC_PushbackImmunity();
     AddSC_mod_lifebloom();
     AddSC_spell_natures_focus_wrath();
+    AddSC_bear_mangle_rage();
     AddSC_spell_no_swing_reset_arakkoa();
     AddSC_spell_mage_mage_armor_custom();
     AddSC_molten_armor_mechanic();
@@ -217,8 +230,19 @@ void Addworld_of_alonecraftScripts()
     AddSC_war_riposte();
     AddSC_war_tactical_mastery();
     AddSC_war_improved_charge();
+    AddSC_war_charge_in_combat();
+    AddSC_war_intervene();
     AddSC_war_parry_conversions();
+    AddSC_war_toughness();
+    AddSC_war_prot_conversions();
+    AddSC_war_incite();
+    AddSC_war_blood_and_thunder();
+    AddSC_war_improved_thunder_clap();
+    AddSC_war_spellshield();
+    AddSC_war_damage_shield();
+    AddSC_war_barricade();
     AddSC_alonecraft_testlog();
     AddSC_flight_path_discovery();
     AddSC_hunter_pet_level_sync();
+    AddSC_hunter_trap_launcher();
 }

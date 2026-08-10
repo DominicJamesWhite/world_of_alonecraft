@@ -16,6 +16,9 @@
  *
  * The bag path is trivial (destroy, store).  The equipped path is not, and its
  * ordering is load-bearing -- see the comment on UpgradeEquipped.
+ *
+ * Both paths have a second route for items that block their own replacement:
+ * see IsSelfConflict and UpgradeEquippedDestroyFirst.
  */
 
 #include "Chat.h"
@@ -23,6 +26,7 @@
 #include "Item.h"
 #include "ItemUpgrade.h"
 #include "ItemUpgradeAffix.h"
+#include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -64,7 +68,10 @@ namespace
         return c;
     }
 
-    void Restore(Player* player, Item* neo, Carried const& c, ItemTemplate const* proto)
+    // retier = false is the rollback case: the item being re-created IS the
+    // original, so its affix must stay on the tier it already had.
+    void Restore(Player* player, Item* neo, Carried const& c,
+                 ItemTemplate const* proto, bool retier = true)
     {
         neo->SetUInt32Value(ITEM_FIELD_CREATE_PLAYED_TIME, c.playedTime);
 
@@ -79,7 +86,8 @@ namespace
         // the level-80 variant still reads "+5 Intellect".
         if (c.randomProp)
             neo->SetItemRandomProperties(
-                RetierRandomProperty(c.randomProp, proto->RandomProperty));
+                retier ? RetierRandomProperty(c.randomProp, proto->RandomProperty)
+                       : c.randomProp);
 
         // Slots 0..6 only -- 7..11 belong to the call above.
         for (uint8 i = 0; i < MAX_INSPECTED_ENCHANTMENT_SLOT; ++i)
@@ -104,80 +112,169 @@ namespace
         ChatHandler(player->GetSession()).PSendSysMessage("{}", text);
     }
 
+    // Errors an item can inflict on its OWN replacement.
+    //
+    // Player::CanEquipItem calls CanTakeMoreSimilarItems unconditionally at
+    // PlayerStorage.cpp:1918, BEFORE the swap-aware CanEquipUniqueItem at
+    // :2005.  CanTakeMoreSimilarItems (:803, limit-category block :832-852) has
+    // no swap or except-slot parameter at all -- GetItemCountWithLimitCategory
+    // skips only the item handed to it, which is the NEW one -- so the base item
+    // counts against its own upgrade and the player is told "You can only carry
+    // 1 <family>".  Every one of the 593 synthetic ItemLimitCategory families
+    // that closes the base+variant dupe reopens as this bug: 1442 variants
+    // across 307 base items.
+    //
+    // CanStoreNewItem reaches the same check via CanStoreItem (:1171), so the
+    // bag path fails identically.
+    //
+    // These are therefore "maybe", not "no".  They are resolved by asking the
+    // core again once the base is genuinely gone -- never by deciding here that
+    // the conflict was self-inflicted.  Working that out in the module means
+    // reimplementing GetItemCountWithLimitCategory (equipped + keyring + bags +
+    // bank + socketed gems) and keeping it in sync with core; erring permissive
+    // reopens the very dupe the categories exist to close.
+    //
+    // Only the ItemLimitCategory errors qualify.  EQUIP_ERR_CANT_CARRY_MORE_OF_
+    // THIS (the MaxCount branch, :821) and EQUIP_ERR_ITEM_UNIQUE_EQUIPABLE
+    // (HasItemOrGemWithIdEquipped, Player.cpp:13980) are both keyed on the item
+    // ID being added -- the variant's, never the base's -- so they can only mean
+    // a genuine second copy, and destroying the base would not help.
+    bool IsSelfConflict(InventoryResult res)
+    {
+        switch (res)
+        {
+            case EQUIP_ERR_ITEM_MAX_LIMIT_CATEGORY_COUNT_EXCEEDED:
+            case EQUIP_ERR_ITEM_MAX_LIMIT_CATEGORY_EQUIPPED_EXCEEDED:
+            case EQUIP_ERR_ITEM_MAX_COUNT_EQUIPPED_SOCKETED:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // The base is already destroyed by the time this runs, so rolling back means
+    // re-creating it.  Everything worth keeping is in `carried`; what cannot be
+    // recovered (item GUID, refund eligibility, the BoP trade window, worn
+    // durability) is lost on the success path too.
+    //
+    // Ladder: the slot we just emptied, then the bags, then the mailbox.  The
+    // last rung is not decoration -- the destroy-first path can be entered with
+    // full bags, and without it a failed equip would destroy the item outright.
+    void Rollback(Player* player, uint8 slot, uint32 baseEntry,
+                  ItemTemplate const* baseProto, Carried const& carried)
+    {
+        uint16 dest = 0;
+        if (slot != NULL_SLOT &&
+            player->CanEquipNewItem(slot, dest, baseEntry, false) == EQUIP_ERR_OK)
+            if (Item* back = player->EquipNewItem(dest, baseEntry, true))
+            {
+                Restore(player, back, carried, baseProto, false);
+                player->ApplyEnchantment(back, true);
+                player->ToggleMetaGemsActive(slot, true);
+                Say(player, "The reforge failed; your item is unchanged.");
+                return;
+            }
+
+        ItemPosCountVec bagDest;
+        if (player->CanStoreNewItem(NULL_BAG, NULL_SLOT, bagDest, baseEntry, 1)
+            == EQUIP_ERR_OK)
+            if (Item* back = player->StoreNewItem(bagDest, baseEntry, true))
+            {
+                Restore(player, back, carried, baseProto, false);
+                back->SetState(ITEM_CHANGED, player);
+                Say(player, "The reforge failed; your item is in your bags.");
+                return;
+            }
+
+        if (Item* back = Item::CreateItem(baseEntry, 1, player))
+        {
+            Restore(player, back, carried, baseProto, false);
+            player->SendItemRetrievalMail(back);
+            Say(player, "The reforge failed; your item has been mailed to you.");
+            return;
+        }
+
+        LOG_DEBUG("alonecraft.debug",
+                  "ItemUpgrade: rollback of entry {} for {} recovered nothing",
+                  baseEntry, player->GetGUID().ToString());
+        Say(player, "The reforge failed and your item could not be recovered. "
+                    "Please contact a game master.");
+    }
+
+    // Somewhere to put a bagged replacement: the slot the original occupies
+    // first, then anywhere.  The original slot can be refused by a bag-specific
+    // restriction (an ammo pouch, say), which is what the fallback is for.
+    InventoryResult FindBagSpace(Player* player, uint8 bag, uint8 slot,
+                                 ItemPosCountVec& dest, uint32 newEntry)
+    {
+        dest.clear();
+        InventoryResult msg = player->CanStoreNewItem(bag, slot, dest, newEntry, 1);
+        if (msg == EQUIP_ERR_OK)
+            return msg;
+
+        dest.clear();
+        return player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, newEntry, 1);
+    }
+
     // Item sitting in a bag: destroy it and store the replacement.  Both are
     // ordinary operations and no equipment slot is involved.
     bool UpgradeInBag(Player* player, Item* item, uint32 newEntry, ItemTemplate const* proto)
     {
+        uint8 bag = item->GetBagSlot();
+        uint8 slot = item->GetSlot();
+
         ItemPosCountVec dest;
-        InventoryResult msg = player->CanStoreNewItem(item->GetBagSlot(), item->GetSlot(),
-                                                      dest, newEntry, 1);
-        if (msg != EQUIP_ERR_OK)
+        InventoryResult msg = FindBagSpace(player, bag, slot, dest, newEntry);
+        if (msg != EQUIP_ERR_OK && !IsSelfConflict(msg))
         {
-            // Fall back to anywhere in the bags -- the original slot may be
-            // reserved by a bag-specific restriction (e.g. an ammo pouch).
-            msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, newEntry, 1);
-            if (msg != EQUIP_ERR_OK)
-            {
-                player->SendEquipError(msg, item, nullptr, newEntry);
-                return false;
-            }
+            player->SendEquipError(msg, item, nullptr, newEntry);
+            return false;
         }
 
+        // Anything read off `item` must be read NOW.  Player::DestroyItem ends
+        // in Item::SetState(ITEM_REMOVED), which for an ITEM_NEW item is
+        // `delete this` (Item.cpp:714-726) -- the pointer can be dangling the
+        // instant it returns.  The ItemTemplate is owned by ObjectMgr and
+        // outlives the item, so caching that is safe.
+        uint32 baseEntry = item->GetEntry();
+        ItemTemplate const* baseProto = item->GetTemplate();
         Carried carried = Snapshot(item);
-        player->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+        bool selfConflict = msg != EQUIP_ERR_OK;
+
+        player->DestroyItem(bag, slot, true);
+
+        // Re-ask now the base is gone.  The freed slot guarantees room, so only
+        // the uniqueness verdict can have changed -- and if it has not, the
+        // conflict was real (a legacy duplicate, say) and we put the item back.
+        if (selfConflict &&
+            FindBagSpace(player, bag, slot, dest, newEntry) != EQUIP_ERR_OK)
+        {
+            Rollback(player, NULL_SLOT, baseEntry, baseProto, carried);
+            return false;
+        }
 
         Item* neo = player->StoreNewItem(dest, newEntry, true);
         if (!neo)
+        {
+            Rollback(player, NULL_SLOT, baseEntry, baseProto, carried);
             return false;
+        }
 
         Restore(player, neo, carried, proto);
         neo->SetState(ITEM_CHANGED, player);
         return true;
     }
 
-    // Item currently worn.  The old item is unequipped into a bag first and the
-    // replacement equipped into an EMPTY slot.
+    // The normal equipped path: park the old item in a bag, equip the
+    // replacement into the now-EMPTY slot, destroy the parked original last.
+    // Destroying last means a failure anywhere loses nothing but the tool.
     //
-    // The obvious alternative -- DestroyItem then EquipNewItem(swap=true) into
-    // the same slot -- crashed the server: Player::_SaveInventory faulted on
-    // logout (PlayerStorage.cpp:7477), inside SaveToDB, making it a data-loss
-    // bug rather than merely a stability one.  Nothing in core replaces an
-    // equipped item that way; every EquipNewItem call site targets an empty
-    // slot.  The CanStoreItem/RemoveItem/StoreItem trio below is lifted from
+    // The CanStoreItem/RemoveItem/StoreItem trio is lifted from
     // Player::AutoUnequipOffhandIfNeed (Player.cpp:12583-12588).
-    bool UpgradeEquipped(Player* player, Item* item, uint8 slot,
-                         uint32 newEntry, ItemTemplate const* proto)
+    bool UpgradeEquippedParked(Player* player, Item* item, uint8 slot, uint16 dest,
+                               ItemPosCountVec const& parkPos, uint32 newEntry,
+                               ItemTemplate const* proto)
     {
-        ItemPosCountVec parkPos;
-        InventoryResult canPark = player->CanStoreItem(NULL_BAG, NULL_SLOT, parkPos, item, false);
-        if (canPark != EQUIP_ERR_OK)
-        {
-            player->SendEquipError(canPark, item, nullptr);
-            return false;
-        }
-
-        // swap = TRUE, and it is load-bearing twice over.  This check runs while
-        // the old item is still worn -- deliberately, so a failure costs nothing
-        // -- and CanEquipItem interprets swap as "the slot is about to be freed":
-        //
-        //   * PlayerStorage.cpp:1972 rejects an occupied slot outright unless
-        //     swap is set, which failed EVERY equipped upgrade with
-        //     EQUIP_ERR_NO_EQUIPMENT_SLOT_AVAILABLE.
-        //   * CanEquipUniqueItem (PlayerStorage.cpp:2005) only ignores the item
-        //     being replaced when swap is set.  Without it the base item's own
-        //     ItemLimitCategory -- the 593 synthetic families that close the
-        //     unique-equipped dupe -- counts against its own replacement.
-        //
-        // Both were invisible in the bag path, which never touches an equipment
-        // slot, which is why this survived the bag-first test order.
-        uint16 dest = 0;
-        InventoryResult canEquip = player->CanEquipNewItem(slot, dest, newEntry, true);
-        if (canEquip != EQUIP_ERR_OK)
-        {
-            player->SendEquipError(canEquip, nullptr, nullptr, newEntry);
-            return false;
-        }
-
         Carried carried = Snapshot(item);
 
         player->RemoveItem(INVENTORY_SLOT_BAG_0, slot, true);
@@ -188,9 +285,8 @@ namespace
         Item* neo = player->EquipNewItem(dest, newEntry, true);
         if (!neo)
         {
-            // The original is parked in the bags, not destroyed: destruction is
-            // deliberately the last step so this path loses nothing but the
-            // tool.  Say so, or it reads as the item having vanished.
+            // The original is parked in the bags, not destroyed.  Say so, or it
+            // reads as the item having vanished.
             Say(player, "Could not equip the reforged item; your original is in "
                         "your bags.");
             return false;
@@ -203,6 +299,101 @@ namespace
         player->ApplyEnchantment(neo, true);
         player->ToggleMetaGemsActive(slot, true);
         return true;
+    }
+
+    // The path for an item that blocks its own replacement -- see
+    // IsSelfConflict.  Parking cannot help here: a parked base still counts
+    // against its own ItemLimitCategory, because CanTakeMoreSimilarItems
+    // (PlayerStorage.cpp:832-852) counts bags as readily as equipment slots.
+    // The base has to actually be gone.
+    //
+    // Destroy-first is safe here, and the reason the old comment said otherwise
+    // is worth recording.  Two hazards, both real:
+    //
+    //   * Item::SetState(ITEM_REMOVED) on an ITEM_NEW item is `delete this`
+    //     (Item.cpp:714-726), and Player::DestroyItem ends in exactly that
+    //     (PlayerStorage.cpp:3208).  Run from inside the spell effect, where
+    //     Spell::itemTarget still holds the pointer, that is a use-after-free.
+    //   * EquipNewItem's third argument is `update`, NOT swap.  Into an
+    //     occupied slot, EquipItem takes its stacking branch
+    //     (PlayerStorage.cpp:2898-2925), deletes the new item and returns the
+    //     OLD one -- so a caller that then "destroys the old one" leaves
+    //     m_items[slot] dangling.
+    //
+    // Either leaves a freed pointer in m_itemUpdateQueue, which _SaveInventory
+    // dereferences at PlayerStorage.cpp:7477 -- inside SaveToDB, hence the data
+    // loss.  Destroy-first was never the problem; destroy-while-still-
+    // referenced was.  This function runs from UpgradeEquippedEvent, one tick
+    // after Spell::finish(), touches `item` only before the destroy, and equips
+    // into a slot that is genuinely empty with swap = false.
+    bool UpgradeEquippedDestroyFirst(Player* player, Item* item, uint8 slot,
+                                     uint32 newEntry, ItemTemplate const* proto)
+    {
+        uint32 baseEntry = item->GetEntry();
+        ItemTemplate const* baseProto = item->GetTemplate();
+        Carried carried = Snapshot(item);
+
+        player->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+        // `item` is dangling from here on.  Do not touch it.
+
+        uint16 dest = 0;
+        InventoryResult canEquip = player->CanEquipNewItem(slot, dest, newEntry, false);
+        if (canEquip == EQUIP_ERR_OK)
+            if (Item* neo = player->EquipNewItem(dest, newEntry, true))
+            {
+                Restore(player, neo, carried, proto);
+                player->ApplyEnchantment(neo, true);
+                player->ToggleMetaGemsActive(slot, true);
+                return true;
+            }
+
+        // The core still says no with the base gone, so the conflict was real --
+        // a duplicate acquired before the limit categories were applied, most
+        // likely.  Put the original back.
+        LOG_DEBUG("alonecraft.debug",
+                  "ItemUpgrade: {} -> {} rejected post-destroy with {}",
+                  baseEntry, newEntry, static_cast<uint32>(canEquip));
+        Rollback(player, slot, baseEntry, baseProto, carried);
+        return false;
+    }
+
+    // Item currently worn.  Two routes, and the ordinary one is unchanged: the
+    // destroy-first fallback is entered only where the parked route would have
+    // failed outright, so it cannot regress anything that works today.
+    bool UpgradeEquipped(Player* player, Item* item, uint8 slot,
+                         uint32 newEntry, ItemTemplate const* proto)
+    {
+        ItemPosCountVec parkPos;
+        InventoryResult canPark = player->CanStoreItem(NULL_BAG, NULL_SLOT, parkPos,
+                                                       item, false);
+
+        // swap = TRUE, and it is load-bearing twice over.  This check runs while
+        // the old item is still worn -- deliberately, so a failure costs nothing
+        // -- and CanEquipItem interprets swap as "the slot is about to be freed":
+        //
+        //   * PlayerStorage.cpp:1972 rejects an occupied slot outright unless
+        //     swap is set, which failed EVERY equipped upgrade with
+        //     EQUIP_ERR_NO_EQUIPMENT_SLOT_AVAILABLE.
+        //   * CanEquipUniqueItem (PlayerStorage.cpp:2005) only ignores the item
+        //     being replaced when swap is set.
+        //
+        // What swap does NOT reach is CanTakeMoreSimilarItems, called earlier and
+        // unconditionally at :1918 -- see IsSelfConflict.
+        uint16 dest = 0;
+        InventoryResult canEquip = player->CanEquipNewItem(slot, dest, newEntry, true);
+
+        if (canEquip == EQUIP_ERR_OK && canPark == EQUIP_ERR_OK)
+            return UpgradeEquippedParked(player, item, slot, dest, parkPos,
+                                         newEntry, proto);
+
+        if (IsSelfConflict(canEquip))
+            return UpgradeEquippedDestroyFirst(player, item, slot, newEntry, proto);
+
+        if (canEquip != EQUIP_ERR_OK)
+            player->SendEquipError(canEquip, nullptr, nullptr, newEntry);
+        else
+            player->SendEquipError(canPark, item, nullptr);
+        return false;
     }
 
     // Equipping cannot happen inside the tool's own spell effect.
@@ -313,6 +504,21 @@ class spell_item_upgrade_tool : public SpellScript
             item->GetUInt32Value(ITEM_FIELD_DURABILITY) == 0)
         {
             Say(player, "Repair that item before reforging it.");
+            return SPELL_FAILED_DONT_REPORT;
+        }
+
+        // Reject a genuinely impossible upgrade here rather than a tick later,
+        // when the tool has already been consumed.  A self-conflict is expected
+        // and is resolved downstream, so it must pass.
+        //
+        // CanTakeMoreSimilarItems and not CanEquipNewItem: CanEquipItem ends its
+        // runtime block with IsNonMeleeSpellCast(false) (PlayerStorage.cpp:1951),
+        // which is true throughout CheckCast because the spell being cast IS the
+        // tool -- the same false positive documented on UpgradeEquippedEvent.
+        InventoryResult similar = player->CanTakeMoreSimilarItems(newEntry, 1);
+        if (similar != EQUIP_ERR_OK && !IsSelfConflict(similar))
+        {
+            player->SendEquipError(similar, nullptr, nullptr, newEntry);
             return SPELL_FAILED_DONT_REPORT;
         }
 
