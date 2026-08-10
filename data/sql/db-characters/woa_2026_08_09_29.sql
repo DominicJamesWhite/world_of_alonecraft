@@ -1,0 +1,42 @@
+-- ============================================================
+-- Warrior (Protection): retire Concussion Blow from saved characters
+-- ============================================================
+-- Companion to woa_2026_08_09_27.sql, which repointed talent 152's
+-- SpellRank_1 from 12809 (Concussion Blow) to 200651 (Barricade).
+--
+-- Repointing a talent orphans every character_talent row still holding the old
+-- spell, and that is not a soft failure -- it is an assertion:
+--
+--     Player::_LoadTalents (Player.cpp:15267)
+--         TalentSpellPos const* talentPos = GetTalentSpellPos(spellId);
+--         ASSERT(talentPos);
+--
+-- GetTalentSpellPos is built from Talent.dbc, so the moment 12809 stops being
+-- any talent's rank the server aborts while loading any character that had
+-- spent a point on it.  Fifteen characters were affected here, and because
+-- playerbots load like players it took the worldserver down at startup rather
+-- than at someone's login.
+--
+-- The talent point comes back on its own.  ActivateSpec recomputes
+-- m_usedTalentCount from the talent map every load (Player.cpp:15478), so
+-- removing the row leaves the character one point richer with no reset needed.
+-- A blanket .reset talents would have worked too, but it would also have
+-- thrown away every affected character's whole build to fix one point.
+--
+-- character_spell is cleaned as well: the talent grants the ability, and
+-- dropping only the talent row would leave those warriors with a permanently
+-- free Concussion Blow that no talent pays for.  Spell 12809 itself stays in
+-- Spell.dbc for NPCs.
+--
+-- character_action drops the now-dead hotbar buttons so nobody is left with a
+-- slot that silently does nothing (type 0 = spell).
+--
+-- Idempotent by construction -- DELETE only.
+--
+-- NOTE FOR NEXT TIME: any change that repoints a talent's SpellRank_N needs a
+-- db-characters companion like this one, applied in the same batch.
+-- ============================================================
+
+DELETE FROM `character_talent` WHERE `spell` = 12809;
+DELETE FROM `character_spell` WHERE `spell` = 12809;
+DELETE FROM `character_action` WHERE `action` = 12809 AND `type` = 0;
