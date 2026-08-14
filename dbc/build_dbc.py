@@ -739,24 +739,73 @@ def main():
         SV_RECORD_SIZE = SV_FIELD_COUNT * 4  # 128 bytes
         sv_records, sv_sb = read_int_dbc(base_spellvisual, SV_FIELD_COUNT, SV_RECORD_SIZE)
 
-        # Infernal Bargain (63349) channel visual.  There is no colour/tint field
-        # anywhere in the visual chain -- colour lives in the particle models -- so
-        # recolouring means pointing at a different kit.  Kit 6719 is the client's
-        # own fire twin of Evocation's channel kit 2489: same AnimationId 125 and
-        # SoundID 4974, but CycloneFire/Fire_Precast_Low_Hand instead of
-        # CycloneWater/Lightning_PreCast_Low_Hand.  Blizzard only ever references
-        # 6719 as a StateKit, so we add a SpellVisual that uses it as a ChannelKit.
-        INFERNAL_BARGAIN_VISUAL_ID = 200001
-        FIRE_EVOCATION_CHANNEL_KIT = 6719
-        CHANNEL_KIT_FIELD_INDEX = 6
-        if INFERNAL_BARGAIN_VISUAL_ID in sv_records:
-            print(f"WARNING: SpellVisual {INFERNAL_BARGAIN_VISUAL_ID} already exists in base — overwriting")
+        # SpellVisual.dbc has no override table -- rows are declared here.  Field
+        # indices, read off the 3.3.5a layout (32 int fields):
+        #   1 PrecastKit    2 CastKit      3 ImpactKit   4 StateKit
+        #   5 StateDoneKit  6 ChannelKit   7 HasMissile  8 MissileModel
+        #  10 MissileDestinationAttachment  11 MissileSound  13 Flags
+        #  16 MissileAttachment
+        SV_CHANNEL_KIT = 6
+        SV_IMPACT_KIT = 3
+        SV_HAS_MISSILE = 7
+        SV_MISSILE_MODEL = 8
+        SV_MISSILE_DEST_ATTACH = 10
+        SV_MISSILE_SOUND = 11
+        SV_FLAGS = 13
+        SV_MISSILE_ATTACHMENT = 16
 
-        sv_row = [0] * SV_FIELD_COUNT
-        sv_row[0] = INFERNAL_BARGAIN_VISUAL_ID
-        sv_row[CHANNEL_KIT_FIELD_INDEX] = FIRE_EVOCATION_CHANNEL_KIT
-        sv_records[INFERNAL_BARGAIN_VISUAL_ID] = sv_row
-        print(f"Added SpellVisual {INFERNAL_BARGAIN_VISUAL_ID}: ChannelKit -> {FIRE_EVOCATION_CHANNEL_KIT}")
+        CUSTOM_SPELL_VISUALS = [
+            # Infernal Bargain (63349) channel visual.  There is no colour/tint
+            # field anywhere in the visual chain -- colour lives in the particle
+            # models -- so recolouring means pointing at a different kit.  Kit
+            # 6719 is the client's own fire twin of Evocation's channel kit 2489:
+            # same AnimationId 125 and SoundID 4974, but
+            # CycloneFire/Fire_Precast_Low_Hand instead of
+            # CycloneWater/Lightning_PreCast_Low_Hand.  Blizzard only ever
+            # references 6719 as a StateKit, so this row uses it as a ChannelKit.
+            (200001, "Infernal Bargain channel", {SV_CHANNEL_KIT: 6719}),
+
+            # Lacerating Shot (1513/14326/14327) -- woa_2026_08_11_02.sql.
+            # Scare Beast's visual 336 carries StateKit 4031, the persistent fear
+            # swirl, which is exactly the wrong thing on a bleed: StateKit is what
+            # the client draws on the target for the aura's whole duration.
+            #
+            # This is Steady Shot's row (8155) with the impact swapped.  8155 is
+            # the right skeleton because it is a physical hunter shot: missile
+            # model 528 is the plain arrow (shared with Multi-Shot 567), sound
+            # 3013 is the bowstring, and Flags 1 / MissileAttachment -1 are what
+            # every hunter shot sets.  Only the impact changes -- kit 220 is the
+            # blood splash Rend (372), Deep Wounds (121) and Garrote (757) all
+            # use, rather than 8155's own physical-hit kit 437.
+            #
+            # StateKit is deliberately left at 0.  None of the retail bleeds set
+            # one; a bleed reads as a hit that keeps hurting, not as an effect
+            # hovering on the model.
+            (200002, "Lacerating Shot arrow + bleed impact", {
+                SV_IMPACT_KIT: 220,
+                SV_HAS_MISSILE: 1,
+                SV_MISSILE_MODEL: 528,
+                SV_MISSILE_DEST_ATTACH: 1,
+                SV_MISSILE_SOUND: 3013,
+                SV_FLAGS: 1,
+                # 0xFFFFFFFF, not -1: read_int_dbc unpacks every field as
+                # unsigned, so the base file's -1 round-trips as 4294967295 and
+                # write_int_dbc packs with '<I'.  A literal -1 here raises
+                # struct.error instead of writing the same bytes.
+                SV_MISSILE_ATTACHMENT: 0xFFFFFFFF,
+            }),
+        ]
+
+        for visual_id, label, fields in CUSTOM_SPELL_VISUALS:
+            if visual_id in sv_records:
+                print(f"WARNING: SpellVisual {visual_id} already exists in base — overwriting")
+
+            sv_row = [0] * SV_FIELD_COUNT
+            sv_row[0] = visual_id
+            for field_index, value in fields.items():
+                sv_row[field_index] = value
+            sv_records[visual_id] = sv_row
+            print(f"Added SpellVisual {visual_id}: {label}")
 
         sv_out = os.path.join(output_dir, "DBFilesClient", "SpellVisual.dbc")
         write_int_dbc(sv_out, sv_records, SV_FIELD_COUNT, SV_RECORD_SIZE, sv_sb)
@@ -764,6 +813,60 @@ def main():
     else:
         if base_spellvisual:
             print(f"\nWARNING: Base SpellVisual.dbc not found: {base_spellvisual} — skipping.")
+
+    # ── SpellIcon.dbc ──────────────────────────────────────────
+    # Spell.dbc's SpellIconID indexes THIS file, not a FileDataID.  Modern
+    # WoW tooling quotes icons as FileDataIDs (six digits); 3.3.5a knows
+    # nothing about them, and 3.3.5a's own ids top out at 4375.  So using an
+    # icon the client ships but SpellIcon.dbc never names means adding a row.
+    #
+    # Custom ids start at 5000, just above retail's maximum.  Keep them low:
+    # DBCFileLoader::AutoProduceData allocates indexTable[maxId + 1], so a
+    # six-digit id would cost the 32-bit client a megabyte of null pointers
+    # for one icon.
+    base_spellicon = getattr(config, "BASE_SPELLICON_DBC_PATH", None)
+    if base_spellicon and os.path.isfile(base_spellicon):
+        print("\n--- SpellIcon.dbc ---")
+
+        # (id, texture path).  The path must exist in the client's archives --
+        # verify with `mpqcli list` before adding one, or the icon renders blank.
+        # INV_Ammo_Arrow_05 ships in enUS/patch-enUS.MPQ but has no retail row.
+        CUSTOM_SPELL_ICONS = [
+            (5000, r"Interface\Icons\INV_Ammo_Arrow_05"),
+        ]
+
+        with open(base_spellicon, "rb") as f:
+            magic = f.read(4)
+            rec_count, field_count, record_size, sb_size = struct.unpack("<4i", f.read(16))
+            si_rows = {}
+            for _ in range(rec_count):
+                icon_id, name_off = struct.unpack("<2i", f.read(record_size))
+                si_rows[icon_id] = name_off
+            si_sb = bytearray(f.read(sb_size))
+
+        print(f"Read {len(si_rows)} records from {base_spellicon}")
+
+        for icon_id, texture in CUSTOM_SPELL_ICONS:
+            if icon_id in si_rows:
+                print(f"WARNING: SpellIcon {icon_id} already exists in base — overwriting")
+            si_rows[icon_id] = len(si_sb)
+            si_sb += texture.encode("utf-8") + b"\x00"
+            print(f"Added SpellIcon {icon_id}: {texture}")
+
+        si_out = os.path.join(output_dir, "DBFilesClient", "SpellIcon.dbc")
+        os.makedirs(os.path.dirname(si_out), exist_ok=True)
+        with open(si_out, "wb") as f:
+            f.write(magic)
+            f.write(struct.pack("<4i", len(si_rows), field_count, record_size, len(si_sb)))
+            for icon_id in sorted(si_rows):
+                f.write(struct.pack("<2i", icon_id, si_rows[icon_id]))
+            f.write(bytes(si_sb))
+
+        print(f"Wrote {len(si_rows)} records to {si_out}")
+        dbc_files.append("SpellIcon.dbc")
+    else:
+        if base_spellicon:
+            print(f"\nWARNING: Base SpellIcon.dbc not found: {base_spellicon} — skipping.")
 
     # ── MPQ Packing ────────────────────────────────────────────
     print()

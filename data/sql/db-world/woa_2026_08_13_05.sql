@@ -1,0 +1,29 @@
+-- Empowered Touch: proc off heals, not off damage.
+--
+-- The spell_proc row for -33879 (all ranks) carried ProcFlags 65536 =
+-- PROC_FLAG_DONE_SPELL_MAGIC_DMG_CLASS_NEG -- a *negative* magic spell. Every
+-- spell that is supposed to trigger it is a heal: Healing Touch, Regrowth and
+-- Nourish, all positive. The correct flag is 16384,
+-- PROC_FLAG_DONE_SPELL_MAGIC_DMG_CLASS_POS, which is what the DBC row on 33880
+-- has always said. An explicit spell_proc row wins over the DBC-derived one
+-- (SpellMgr::LoadSpellProcs skips generation for any spell already in the map),
+-- so the DBC being right did not help.
+--
+-- Consequence: Empowered Touch has never fired for anyone at any rank. Living
+-- Spores (200002) was never applied, so its DoT (200001) never landed, and that
+-- talent's entire contribution was zero. Both were invisible -- a proc that is
+-- filtered out logs nothing.
+--
+-- Found with Alonecraft.ProcDebug under the simulator. Over a 90-second fight
+-- aura 33880 was checked 1612 times against Regrowth events with every
+-- predicate matching -- typeMask 16384, phase 2, family 7, mask 96 against
+-- Regrowth's flag 64 -- and rejected 1612 times. The extended diagnostic showed
+-- why: the event's 16384 against the entry's 65536 is zero.
+--
+-- The negative flag came in with 2026_03_29_08.sql, which set it on any -33879
+-- row still at ProcFlags 0 while fixing an unrelated duplicate-rank problem.
+--
+-- See also woa_2026_08_13_04.sql, which repairs rank 1's DBC row. That one is
+-- still required: the two faults are independent, and rank 1 was inert on its
+-- own terms as well.
+UPDATE `spell_proc` SET `ProcFlags` = 16384 WHERE `SpellId` = -33879;

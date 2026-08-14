@@ -1,0 +1,44 @@
+--
+-- Simulator sparring dummy: first calibration of HealthModifier, 26 -> 78.
+--
+-- Every previous file deliberately left this alone, on the reasoning that
+-- holding fight length constant kept the damage-parity numbers comparable while
+-- the damage dial moved. That was right for those changes and is now the
+-- binding constraint.
+--
+-- The fight is HP-bound: it ends when the dummy dies, so its length is just
+-- 363k / DPS. At the DPS the 31-spec run measured that is 33s at the top and
+-- 73s in the middle, and the incoming-swing ledger added in that run shows what
+-- it costs -- warrior_fury resolved 17 swings, warrior_arms 17, mage_frost 16.
+--
+-- Seventeen swings cannot characterise an avoidance rate. The standard error on
+-- a 40% chance over 17 trials is 12 points, so a spec reading 40% and one
+-- reading 60% are not distinguishable, and the whole mitigation chart is built
+-- on those counts. It also barely tests sustain: 33 seconds is roughly one
+-- cooldown cycle, so a spec that survives by cooldowns and one that survives by
+-- passive mitigation look the same.
+--
+-- 3x HP takes the median fight to ~220s and the fastest to ~104s, which is
+-- 50-110 swings -- a standard error of 5 points rather than 12.
+--
+-- THE TIMEOUT HAS TO MOVE WITH IT. tools/sim_matrix.py runs the clear pass at
+-- 300s. druid_bear measured 2179 DPS, which against 1.09M health is ~500s, so
+-- at the old limit it would time out and report a censored fight as a survival.
+-- The pass is raised to 600s in the same change.
+--
+-- DamageModifier is deliberately NOT touched. It was set to 8.0 one file ago
+-- and produced a usable spread (6 specs dying 3/3, 4 more partially, 21
+-- surviving); changing two dials at once would make it impossible to attribute
+-- the next result to either.
+--
+-- NOTE that a longer fight is not a neutral change to the survival axis. More
+-- time under fire is strictly harder, so specs that survived at 8.0 may not
+-- survive now, and that is the intent -- but it means the death list from
+-- matrix-20260814-184647 does not carry over. Re-baseline.
+--
+-- Fight length still varies ~5x across specs, because it remains HP-bound and
+-- DPS varies ~5x. That is why damage taken is normalised per second of fight
+-- rather than per fight; this change widens the spread rather than removing it.
+--
+
+UPDATE `creature_template` SET `HealthModifier` = 78 WHERE `entry` = 2000110;

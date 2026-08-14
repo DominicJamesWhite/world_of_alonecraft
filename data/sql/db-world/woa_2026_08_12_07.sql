@@ -1,0 +1,56 @@
+-- ============================================================
+-- Marksmanship: swap Go for the Throat and Improved Concussive Shot
+-- ============================================================
+--
+--     before                                after
+--     tier 0 col 0  Improved Concussive     tier 0 col 0  Go for the Throat
+--     tier 2 col 0  Go for the Throat       tier 2 col 0  Improved Concussive
+--
+-- TODO.md: "SWAP positions of Go for The Throat with Improved Concussive Shot"
+--
+-- Go for the Throat is pet Focus sustain plus a threat bleed -- it makes the
+-- pet usable rather than better, which is what a tier-0 talent should do, and
+-- it is the half of the tree a levelling Marksmanship hunter feels first.
+-- Improved Concussive Shot now sustains Instinctive Fire, so it only pays off
+-- once the hunter actually has a shot rotation to refresh it with; ten points
+-- in is a fairer price for near-permanent ranged haste.
+--
+-- Audit before moving, both directions:
+--
+--   * Nothing depends on them.  Neither 1341 nor 1818 appears in
+--     PrereqTalent_1/2/3 of ANY of the 895 Talent.dbc records.  The only arrows
+--     in tab 363 are 1349 -> 1345, 1353 -> 1361 and 1347 -> 1821.
+--   * They depend on nothing.  Both have PrereqTalent 0 and Flags 0.
+--   * Both destination cells are vacated by this same swap, so there is no
+--     collision at any point.
+--   * Both keep their rank count (2), so no SpellRank_N is lost.
+--
+-- Record order in the file does not matter; build_dbc.py re-sorts Talent.dbc by
+-- (TabID, TierID, ColumnIndex), which is the order the client requires.
+--
+-- ------------------------------------------------------------
+-- THE LINK FALLOUT, WHICH THE AUDIT TOOL CANNOT SEE
+-- ------------------------------------------------------------
+--
+-- Talent build links are a wire format: one digit per (tier, col) slot, so
+-- moving a talent hands its digit to whatever moves into that cell.  Marksman
+-- is segment index 1, and this swap trades digit 0 with digit 6.
+--
+-- Both talents cap at 2 ranks, so `tools/bot_talents.py audit` will report
+-- CLEAN AND BE WRONG -- it validates rank caps, not intent, and only fires when
+-- the receiving talent has fewer ranks than the digit it inherits.  This is the
+-- same invisible case as the Taste for Blood / Bestial Discipline swap in
+-- woa_2026_08_11_23.sql.
+--
+-- Our own override is re-authored alongside this file (digits 0 and 6 swapped,
+-- preserving intent).  mod-playerbots' own conf.dist links are left alone per
+-- the established precedent -- they stay legal -- but note this is now the
+-- third silent meaning change to them.
+-- ------------------------------------------------------------
+
+DELETE FROM `talent_dbc` WHERE `ID` IN (1341, 1818);
+INSERT INTO `talent_dbc` (`ID`, `TabID`, `TierID`, `ColumnIndex`, `SpellRank_1`, `SpellRank_2`, `SpellRank_3`, `SpellRank_4`, `SpellRank_5`, `SpellRank_6`, `SpellRank_7`, `SpellRank_8`, `SpellRank_9`, `PrereqTalent_1`, `PrereqTalent_2`, `PrereqTalent_3`, `PrereqRank_1`, `PrereqRank_2`, `PrereqRank_3`, `Flags`, `RequiredSpellID`, `CategoryMask_1`, `CategoryMask_2`) VALUES
+-- Go for the Throat: tier 2 col 0 -> tier 0 col 0
+(1818, 363, 0, 0, 34950, 34954, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+-- Improved Concussive Shot: tier 0 col 0 -> tier 2 col 0
+(1341, 363, 2, 0, 19407, 19412, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);

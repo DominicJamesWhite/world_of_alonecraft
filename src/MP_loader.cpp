@@ -121,6 +121,14 @@ void AddSC_alonecraft_testlog();
 void AddSC_flight_path_discovery();
 void AddSC_hunter_pet_level_sync();
 void AddSC_hunter_trap_launcher();
+void AddSC_hunter_beast_cleave();
+void AddSC_hunter_pack_hunting();
+void AddSC_hunter_pet_tuning();
+void AddSC_hunter_bm_pet();
+void AddSC_hunter_bm_hunter();
+void AddSC_hunter_mm_pet();
+void AddSC_hunter_mm_hunter();
+void AddSC_alonecraft_sim();
 
 // Add all
 // cf. the naming convention https://github.com/azerothcore/azerothcore-wotlk/blob/master/doc/changelog/master.md#how-to-upgrade-4
@@ -245,4 +253,12 @@ void Addworld_of_alonecraftScripts()
     AddSC_flight_path_discovery();
     AddSC_hunter_pet_level_sync();
     AddSC_hunter_trap_launcher();
+    AddSC_hunter_beast_cleave();
+    AddSC_hunter_pack_hunting();
+    AddSC_hunter_pet_tuning();
+    AddSC_hunter_bm_pet();
+    AddSC_hunter_bm_hunter();
+    AddSC_hunter_mm_pet();
+    AddSC_hunter_mm_hunter();
+    AddSC_alonecraft_sim();
 }

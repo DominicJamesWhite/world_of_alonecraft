@@ -1,0 +1,46 @@
+-- ============================================================
+-- Animal Handler now requires Bestial Wrath
+-- ============================================================
+--
+-- Animal Handler's second half is "your ranged attacks have a 10/20% chance to
+-- trigger Bestial Wrath", so depending on the talent that grants Bestial Wrath
+-- is the honest shape.  It also closes a real hole.
+--
+-- The hole: AuraEffect::HandleProcTriggerSpellAuraProc (SpellAuraEffects.cpp:6914)
+-- casts the triggered spell with a plain CastSpell and never checks HasSpell.
+-- So without this prerequisite a Marksmanship or Survival hunter could spend 25
+-- points in Beast Mastery, take Animal Handler, and receive free Bestial Wraths
+-- while not owning the button at all.  A HasSpell guard in script would fix the
+-- symptom; a prerequisite fixes the design, and does it in the client UI too.
+--
+-- Geometry: Bestial Wrath (1386) sits at tier 6 column 1 and Animal Handler
+-- (1799) at tier 6 column 2 after the swap in woa_2026_08_11_19.sql, so this is
+-- a SAME-TIER arrow pointing left-to-right between adjacent columns.
+--
+-- That is supported and well-precedented -- retail Talent.dbc contains 15
+-- same-tier prerequisite arrows, including this exact geometry (talent 1855 at
+-- (8,2) depends on 1741 at (8,1); 2059 at (8,2) on 1698 at (8,1)).  The client
+-- derives the arrow from the relationship, so nothing else has to be authored.
+--
+-- Reachability is fine: tier 6 already costs 25 points in the tree, and Bestial
+-- Wrath's own prerequisite (Intimidation, 1387, tier 4) is below that.
+--
+-- PrereqRank_1 = 0 because the field is a 0-indexed RANK, not a point count, and
+-- Bestial Wrath has a single rank.  Player::LearnTalent (Player.cpp:14159) scans
+-- `for rank = DependsOnRank; rank < MAX_TALENT_RANK` for any known rank, so 0
+-- means "any rank of it".  Bestial Wrath itself uses the same 0 against
+-- Intimidation.
+--
+-- Note the core reads only PrereqTalent_1 (`TalentEntry::DependsOn`) -- slots 2
+-- and 3 exist in the DBC but are never consulted, so a talent can have exactly
+-- one enforced prerequisite.
+--
+-- talent_dbc overrides REPLACE THE WHOLE RECORD, so all 23 columns are restated
+-- including the post-swap position.  This row supersedes the 1799 row in
+-- woa_2026_08_11_19.sql; the updater applies files in filename order, so the
+-- later one wins and both remain re-appliable from an empty database.
+
+DELETE FROM `talent_dbc` WHERE `ID` = 1799;
+INSERT INTO `talent_dbc` (`ID`, `TabID`, `TierID`, `ColumnIndex`, `SpellRank_1`, `SpellRank_2`, `SpellRank_3`, `SpellRank_4`, `SpellRank_5`, `SpellRank_6`, `SpellRank_7`, `SpellRank_8`, `SpellRank_9`, `PrereqTalent_1`, `PrereqTalent_2`, `PrereqTalent_3`, `PrereqRank_1`, `PrereqRank_2`, `PrereqRank_3`, `Flags`, `RequiredSpellID`, `CategoryMask_1`, `CategoryMask_2`) VALUES
+-- Animal Handler: tier 6 col 2, now requiring Bestial Wrath (1386, tier 6 col 1)
+(1799, 361, 6, 2, 34453, 34454, 0, 0, 0, 0, 0, 0, 0, 1386, 0, 0, 0, 0, 0, 0, 0, 0, 0);

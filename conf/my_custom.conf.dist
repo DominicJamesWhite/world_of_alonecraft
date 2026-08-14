@@ -284,3 +284,121 @@ Alonecraft.Quartermaster.IncludeBots = 0
 #
 
 Alonecraft.Quartermaster.OnlyOnTierChange = 0
+
+#
+#    Alonecraft.HunterPet.Enable
+#        Description: Apply the Alonecraft hunter pet damage/threat trade.
+#                     The pet gives up damage in exchange for holding threat, so
+#                     it can tank for a solo player. Applies to HUNTER_PET only:
+#                     warlock demons already carry their own balance pass in
+#                     WarlockDemonPets.cpp, and a blanket change would silently
+#                     retune Demonology.
+#                     Delivered as hidden aura 200743 by HunterPetTuning.cpp on
+#                     pet summon. Turning this off and re-summoning removes it.
+#        Default:     1 - Enabled
+#
+
+Alonecraft.HunterPet.Enable = 1
+
+#
+#    Alonecraft.HunterPet.DamagePct
+#        Description: Percentage change to all pet damage -- white melee and
+#                     every special ability alike (aura 200743 effect 0,
+#                     SPELL_AURA_MOD_DAMAGE_PERCENT_DONE, all schools).
+#                     Negative reduces.
+#        Default:     -20
+#
+
+Alonecraft.HunterPet.DamagePct = -20
+
+#
+#    Alonecraft.HunterPet.ThreatPct
+#        Description: Percentage change to pet threat generation (aura 200743
+#                     effect 1, SPELL_AURA_MOD_THREAT, all schools).
+#
+#                     Read this together with DamagePct. Threat is generated 1:1
+#                     from post-mitigation damage, so a damage cut is also a
+#                     threat cut, and the NET threat relative to an untuned pet
+#                     is the product:
+#
+#                         (1 + DamagePct/100) x (1 + ThreatPct/100)
+#
+#                     The default pair is what makes TODO.md's "20% less damage,
+#                     60% more threat" true: 0.80 x 2.00 = 1.60. Setting this to
+#                     60 would give 0.80 x 1.60 = 1.28, not 1.60.
+#        Default:     100
+#
+
+Alonecraft.HunterPet.ThreatPct = 100
+
+###############################################################################
+# ALONECRAFT SIMULATOR
+#
+# These only do anything in a --sim process (see modules/world_of_alonecraft/
+# src/sim/SimRunner.cpp and SIMULATOR.md). A normal worldserver never reads a
+# sim path, so leaving them at their defaults costs a live realm nothing.
+#
+# They are kill switches, not tuning dials. The capture they gate is what
+# tools/sim_report.py renders, so turning one off makes a view in the report
+# silently empty rather than making the simulator wrong.
+###############################################################################
+
+#
+#    Alonecraft.Sim.TickMs
+#        Description: The fixed diff, in milliseconds, that --sim feeds the
+#                     world update loop in place of the wall clock. Every
+#                     cooldown, GCD, aura duration, swing timer and proc ICD
+#                     reads the cached clock built from this, so combat stays
+#                     exactly correct while running as fast as the CPU allows.
+#
+#                     Smaller is more faithful and slower. It is also the
+#                     quantum of every timestamp in the result file: an event's
+#                     millisecond is the tick it landed in, not the instant.
+#
+#                     This key has existed since the simulator was written and
+#                     was never documented here, which is the same as not
+#                     existing.
+#        Default:     25
+#
+
+Alonecraft.Sim.TickMs = 25
+
+#
+#    Alonecraft.Sim.AuraSampleMs
+#        Description: How often to sample the actor's and target's auras, for
+#                     the uptime, application-count and stack-series views.
+#
+#                     Sampled rather than hooked on purpose: there is no hook
+#                     for a stack *decrement* (Aura::ModStackAmount only fires
+#                     OnAuraApply on the way up), and stacks are exactly what
+#                     the redesigned proc buttons are about.
+#
+#                     100ms over a 300s fight is 3000 samples, so total uptime
+#                     resolves to 0.03% and a 3-second proc buff to about
+#                     +/-1.7% relative. 250ms starts to alias short procs; 25ms
+#                     buys accuracy nothing needs. The value used is written
+#                     into the result as aura_sample_ms, so the reader knows
+#                     the quantum instead of assuming precision.
+#
+#                     0 disables aura sampling entirely: the Buffs tab of a
+#                     report will be empty and the absorb ledger will be too,
+#                     because absorb is measured from the shield's own falling
+#                     amount between samples.
+#        Default:     100
+#
+
+Alonecraft.Sim.AuraSampleMs = 100
+
+#
+#    Alonecraft.Sim.ResourceSampleMs
+#        Description: How often to sample health and the actor's power bar, for
+#                     the timeline graphs. 1000 is the right grain for the
+#                     question these answer -- "did mana run out, and when" --
+#                     and costs 300 samples over a 300s fight.
+#
+#                     0 disables the resource series; the health/mana graph in
+#                     a report will be absent.
+#        Default:     1000
+#
+
+Alonecraft.Sim.ResourceSampleMs = 1000

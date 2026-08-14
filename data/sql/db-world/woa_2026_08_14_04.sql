@@ -1,0 +1,63 @@
+--
+-- Simulator sparring dummy: second calibration of DamageModifier, 4.0 -> 8.0.
+--
+-- woa_2026_08_14_03.sql doubled 2.0 -> 4.0 on the reasoning that it would move
+-- the 61-96%-damage-taken band into "dies without active mitigation". The
+-- 31-spec run that followed (matrix-20260814-163331, 3 iterations each) shows
+-- it did not go far enough: 30 of 31 specs still cleared, and druid_balance was
+-- the only spec that ever died. One death in thirty-one is not a survival axis,
+-- it is a single outlier.
+--
+-- Damage taken per second of fight -- the correct normalisation, because taken%
+-- is otherwise mostly a function of how fast the spec kills -- spanned 300x on
+-- that run, from 0.01 %/s (warrior_prot) to 3.27 %/s (warlock_destro). A dial
+-- that leaves the top of that range alive is not discriminating; it is just
+-- reporting kill speed again under another name.
+--
+-- Doubling again puts the exposed end (warlock_destro, druid_resto,
+-- shaman_resto, shaman_ele, druid_balance, all above 2.3 %/s) at roughly 5-6.5
+-- %/s, which over a 45-90 second fight is lethal without mitigation or healing,
+-- while the protected end stays comfortably alive. That is the separation the
+-- fixture exists to produce.
+--
+-- HealthModifier is again deliberately NOT changed, for the reason given in
+-- woa_2026_08_14_03.sql: fight length stays where it is, so the damage-parity
+-- numbers remain comparable and only the survival axis moves.
+--
+-- A CORRECTION, because this header carried a wrong claim forward twice.
+--
+-- woa_2026_08_14_00.sql asserted that warrior_prot, hunter_mm and hunter_bm read
+-- ~0% damage taken because "they were never attacked", and _03 and the first
+-- draft of this file repeated it. For warrior_prot that is simply false, and it
+-- was never tested -- it was inherited.
+--
+-- Measured at this 8.0 modifier, with the incoming-swing ledger added to the
+-- simulator for exactly this question (matrix-20260814-184345, 48s fight):
+--
+--     24 swings resolved against the actor
+--      5 missed, 5 dodged, 9 parried  -> 19 of 24 avoided outright (79%)
+--      5 landed, 4 of those blocked
+--      blocked 6421, absorbed 142, reached the health bar 1501
+--
+-- So prot is attacked exactly as often as anything else standing at 5 yards
+-- from an aggressive target. It reads ~0 because it avoids or blocks about 96%
+-- of the damage thrown at it. Rated and observed rates agree (parry 39.9% rated
+-- / 37.5% observed, dodge 18.5% / 20.8%), so this is not a broken roll: it is
+-- 58.4% pure avoidance before block is even considered.
+--
+-- That is a tuning result about the spec, not a limitation of the fixture, and
+-- the two want opposite responses -- "the dummy cannot reach it" argues for a
+-- bigger dial, "the spec avoids everything" argues for looking at the spec. No
+-- modifier will make this spec take damage, because the mechanism is avoidance,
+-- which does not scale with the attacker's damage.
+--
+-- The hunter half of the original claim is still plausible and still untested
+-- per spec: a pet holding aggro is a real mechanism. The swing counter now
+-- reports it directly, so it should be read off the next run rather than
+-- assumed for all three specs at once.
+--
+-- Per the note in woa_2026_08_14_00.sql: changing this number invalidates
+-- comparison with every earlier clear run. Re-baseline from here.
+--
+
+UPDATE `creature_template` SET `DamageModifier` = 8.0 WHERE `entry` = 2000110;

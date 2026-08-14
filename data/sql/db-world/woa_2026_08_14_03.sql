@@ -1,0 +1,48 @@
+--
+-- Simulator sparring dummy: first calibration of DamageModifier.
+--
+-- woa_2026_08_14_00.sql created 2000110 with DamageModifier 2.0 and
+-- HealthModifier 26, and said of both:
+--
+--   BOTH NUMBERS ARE PROVISIONAL until the first matrix run calibrates them,
+--   and they are deliberately the only thing to change when it does. [...] If
+--   every spec clears at 100% the dummy is too weak to separate anything.
+--
+-- That run has now happened: matrix-20260814-155247, all 31 specs, one 300s
+-- clear pass each. 29 of 31 cleared at 100%. Only rogue_assn and hunter_surv
+-- died, and both are unredesigned specs with no solo build -- so the dummy was
+-- separating "spec with no redesign at all" from "everything else", which is
+-- not the line this fixture exists to draw.
+--
+-- Damage taken as a fraction of the actor's maximum health, same run:
+--
+--     0%  warrior_prot, hunter_mm, hunter_bm
+--    2-10% mage_frost, mage_arcane, priest_disc, dk_unholy, priest_holy
+--   17-48% druid_bear, priest_shadow, paladin_prot, warrior_fury,
+--          warrior_arms, mage_fire, dk_frost
+--   61-96% warlock_demo, shaman_ele, paladin_ret, shaman_enh, rogue_sub,
+--          rogue_combat, warlock_destro
+--    100%+ hunter_surv, dk_blood, shaman_resto, druid_balance, druid_cat,
+--          rogue_assn, warlock_affli, druid_resto, paladin_holy (285%)
+--
+-- Doubling DamageModifier moves the 61-96% band to roughly 120-190% -- i.e.
+-- into "dies without active mitigation or healing" -- while leaving the fight
+-- LENGTH alone, because HealthModifier is untouched and the actor's damage is
+-- unchanged. That is deliberate: the damage-parity baseline measured on the old
+-- dummy stays comparable, and only the survival axis moves.
+--
+-- WHAT THIS CANNOT MEASURE, and it is worth writing down rather than reading
+-- the resulting zeros as durability: warrior_prot, hunter_mm and hunter_bm took
+-- 0%, not a small number. They were never attacked -- the hunters sit at 30
+-- yards with a pet holding aggro, and prot blocks. More boss damage does not
+-- threaten a spec that is not being hit, so those three will still report ~0
+-- and that is an artefact of aggro and positioning, not a survivability result.
+--
+-- Per the note in woa_2026_08_14_00.sql: changing this number invalidates
+-- comparison with every earlier clear run. Re-baseline from here.
+--
+-- HealthModifier is deliberately NOT changed. Fight length is currently 32-90
+-- seconds, which is the range the sustain pass already uses.
+--
+
+UPDATE `creature_template` SET `DamageModifier` = 4.0 WHERE `entry` = 2000110;

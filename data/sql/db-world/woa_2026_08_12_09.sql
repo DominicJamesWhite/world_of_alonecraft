@@ -1,0 +1,34 @@
+-- ============================================================
+-- Fix: Invigoration's free-cast buff never actually applied
+-- ============================================================
+--
+-- Pre-existing bug from the Beast Mastery pass, found while giving Lethal
+-- Instincts a duration modifier and having to get the mask column right.
+--
+-- Instinctive Focus (200757) is Invigoration's payload: an ADD_PCT_MODIFIER
+-- (aura 108) with EffectMiscValue1 = 14 (SPELLMOD_COST), ProcCharges 1, meant
+-- to make the next Instinctive Fire cost no mana.  Its modifier lives on
+-- Effect1, and Instinctive Fire (1462) was deliberately given SpellFamilyName 9
+-- and word2 bit 21 (2097152) during that pass so that something COULD modify
+-- it.
+--
+-- But the mask was written to EffectSpellClassMaskC1, which is effect THREE,
+-- word ONE.  200757 has no Effect3 at all, so that value is inert, and
+-- Effect1's own mask is (0, 0, 0).  Player::IsAffectedBySpellMod needs
+-- `spellmod->mask & spellInfo->SpellFamilyFlags` to be non-zero, so the
+-- modifier matched nothing: the mana was never refunded, and because the charge
+-- is only consumed when the modifier is applied to a cast, the buff also sat
+-- there until it expired.  No error, no log line -- exactly the silent failure
+-- the family-flag work was meant to prevent.
+--
+-- The correct column is EffectSpellClassMaskA3: effect ONE, word THREE.  The
+-- letter is the effect index and the digit is the flag96 word.  Missile Barrage
+-- (44401) is the unambiguous reference -- three effects, all modifying Arcane
+-- Missiles (family flag word0 0x800), carrying A1 = B1 = C1 = 2048.
+--
+-- Single-column changes, so UPDATE rather than a 234-column re-INSERT.  The
+-- original full row is in woa_2026_08_11_18.sql, which sorts earlier, so these
+-- land on top of it.
+
+UPDATE `alonecraft_spell_dbc` SET `EffectSpellClassMaskC1` = 0       WHERE `ID` = 200757;
+UPDATE `alonecraft_spell_dbc` SET `EffectSpellClassMaskA3` = 2097152 WHERE `ID` = 200757;

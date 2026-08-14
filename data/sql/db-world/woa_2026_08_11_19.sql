@@ -1,0 +1,52 @@
+-- ============================================================
+-- Beast Mastery: swap Catlike Reflexes and Animal Handler
+-- ============================================================
+--
+-- TODO.md: "SWAP positions of CATLIKE REFLEXES and ANIMAL HANDLER"
+--
+-- The coordinates written next to each talent in TODO.md are the CURRENT
+-- Talent.dbc positions, not the target ones -- that list is described in the
+-- file as "the unmodified 3.3.5a text ... the starting point for the pass".  So
+-- the swap line is an instruction on top of them:
+--
+--     before                       after
+--     tier 5 col 0  Animal Handler tier 5 col 0  Catlike Reflexes
+--     tier 6 col 2  Catlike Ref.   tier 6 col 2  Animal Handler
+--
+-- The point is reachability.  Catlike Reflexes is now the pet's survivability
+-- talent (dodge, plus the Pack Hunting reset) and a tanking pet wants it before
+-- tier 6; Animal Handler's free Bestial Wrath is a damage payoff and reads
+-- better as a deep-tree talent.
+--
+-- Audit before moving, both directions:
+--
+--   * Nothing depends on them.  No talent in ANY tab lists 1799 or 1801 in
+--     PrereqTalent_1/2/3 -- checked across all 895 Talent.dbc records.  The only
+--     prereq arrows in the Beast Mastery tree are 1393->1397, 1387->1386,
+--     1800->2136, 1802->2137 and 1386->1803, none of which touch these two.
+--   * They depend on nothing.  Both have PrereqTalent 0 and Flags 0, so neither
+--     one's own arrow has to be re-pointed.
+--   * Both destination cells are vacated by this same swap, so there is no
+--     collision at any point.  tier 5 col 2 (1397), tier 6 col 0 (1800) and
+--     tier 6 col 1 (1386) are untouched.
+--
+-- talent_dbc overrides REPLACE THE WHOLE RECORD, so all 23 columns are restated
+-- even though only TierID and ColumnIndex change.  Dropping a SpellRank here
+-- would silently delete a rank of the talent.
+--
+-- Record ORDER in the file does not matter: build_dbc.py re-sorts Talent.dbc by
+-- (TabID, TierID, ColumnIndex) before writing, which the client requires.  Get
+-- that wrong by hand and the client fails to render the ENTIRE hunter tree, not
+-- just these two rows -- which is why "the talent pane still draws" is a real
+-- verification step and not a formality.
+--
+-- After applying this, re-run `python tools/export_talents.py` and commit
+-- site/data/ -- the web calculator serves committed JSON and will otherwise show
+-- the old layout.
+
+DELETE FROM `talent_dbc` WHERE `ID` IN (1799, 1801);
+INSERT INTO `talent_dbc` (`ID`, `TabID`, `TierID`, `ColumnIndex`, `SpellRank_1`, `SpellRank_2`, `SpellRank_3`, `SpellRank_4`, `SpellRank_5`, `SpellRank_6`, `SpellRank_7`, `SpellRank_8`, `SpellRank_9`, `PrereqTalent_1`, `PrereqTalent_2`, `PrereqTalent_3`, `PrereqRank_1`, `PrereqRank_2`, `PrereqRank_3`, `Flags`, `RequiredSpellID`, `CategoryMask_1`, `CategoryMask_2`) VALUES
+-- Animal Handler: tier 5 col 0 -> tier 6 col 2
+(1799, 361, 6, 2, 34453, 34454, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+-- Catlike Reflexes: tier 6 col 2 -> tier 5 col 0
+(1801, 361, 5, 0, 34462, 34464, 34465, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);

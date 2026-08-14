@@ -1,0 +1,67 @@
+-- ============================================================
+-- Beast Mastery: swap Taste for Blood and Bestial Discipline
+-- ============================================================
+--
+--     before                            after
+--     tier 1 col 1  Taste for Blood     tier 1 col 1  Bestial Discipline
+--     tier 4 col 3  Bestial Discipline  tier 4 col 3  Taste for Blood
+--
+-- Taste for Blood scales off ranged attack power and rides Lacerating Shot, so
+-- it is a payoff talent rather than a filler one and reads better at 20 points
+-- in.  Bestial Discipline is flat pet Focus sustain, which is what an early
+-- Beast Mastery talent should be -- it makes the pet usable rather than better.
+--
+-- Audit before moving, both directions:
+--
+--   * Nothing depends on them.  No talent in ANY tab lists 1381 or 1390 in
+--     PrereqTalent_1/2/3.
+--   * They depend on nothing.  Both have PrereqTalent 0 and Flags 0.
+--   * Both destination cells are vacated by this same swap, so there is no
+--     collision at any point.
+--   * Tier gating is fine in both directions: tier 4 costs 20 points and tier 1
+--     costs 5, and neither talent has a prerequisite that would strand it.
+--
+-- talent_dbc overrides REPLACE THE WHOLE RECORD, so all 23 columns are restated
+-- even though only TierID and ColumnIndex change.  Dropping a SpellRank here
+-- would silently delete a rank of the talent -- note the two rows have DIFFERENT
+-- rank counts (3 and 2), which is also what makes the build-link fallout below
+-- worse than the last swap.
+--
+-- Record order in the file does not matter; build_dbc.py re-sorts Talent.dbc by
+-- (TabID, TierID, ColumnIndex), which the client requires.
+
+DELETE FROM `talent_dbc` WHERE `ID` IN (1381, 1390);
+INSERT INTO `talent_dbc` (`ID`, `TabID`, `TierID`, `ColumnIndex`, `SpellRank_1`, `SpellRank_2`, `SpellRank_3`, `SpellRank_4`, `SpellRank_5`, `SpellRank_6`, `SpellRank_7`, `SpellRank_8`, `SpellRank_9`, `PrereqTalent_1`, `PrereqTalent_2`, `PrereqTalent_3`, `PrereqRank_1`, `PrereqRank_2`, `PrereqRank_3`, `Flags`, `RequiredSpellID`, `CategoryMask_1`, `CategoryMask_2`) VALUES
+-- Taste for Blood: tier 1 col 1 -> tier 4 col 3
+(1381, 361, 4, 3, 19549, 19550, 19551, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+-- Bestial Discipline: tier 4 col 3 -> tier 1 col 1
+(1390, 361, 1, 1, 19590, 19592, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+-- ------------------------------------------------------------
+-- Build-link fallout, and why the audit cannot catch it
+-- ------------------------------------------------------------
+--
+-- Talent build links are one digit per (tier, col) slot, so this swap makes
+-- array positions 3 and 13 mean each other's talent:
+--
+--     i=3   tier 1 col 1
+--     i=13  tier 4 col 3
+--
+-- Every premade Beast Mastery build carries i3=0, i13=2 -- zero in Taste for
+-- Blood, two in Bestial Discipline.  After the swap those same digits read as
+-- zero in Bestial Discipline and two in Taste for Blood: the build silently
+-- drops a talent it wanted and picks up one it did not.
+--
+-- `tools/bot_talents.py audit` will NOT report this.  It validates rank caps,
+-- and 2 is legal against Taste for Blood's 3 ranks, so the swap is invisible to
+-- it.  The audit only catches the case where the receiving talent has FEWER
+-- ranks than the digit -- which is what happened on the Animal Handler / Catlike
+-- Reflexes swap (woa_2026_08_11_19.sql) and is why that one got noticed.
+--
+-- Our own override is re-authored to preserve intent (digits 3 and 13 swapped
+-- alongside the talents, so the build keeps 2 points in Bestial Discipline).
+-- The five Beast Mastery builds in mod-playerbots' own conf.dist are left alone
+-- -- they are upstream, they remain legal, and forking all of them into the
+-- override layer to defend against our own layout changes is a bigger decision
+-- than this file should make.  If premade BM bots start looking wrong, that is
+-- the first place to look.
